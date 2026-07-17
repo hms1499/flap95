@@ -7,7 +7,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
   const settled = d.status === 'settled';
   return NextResponse.json({
-    id: d.id, onchainId: d.onchainId, status: d.status, stakeWei: d.stakeWei,
+    id: d.id, onchainId: d.onchainId, status: d.status, stakeWei: d.stakeWei, token: d.token,
     creator: d.creator, acceptor: d.acceptor, challengeTo: d.challengeTo,
     creatorScore: settled ? d.creatorScore : null,
     acceptorScore: settled ? d.acceptorScore : null,

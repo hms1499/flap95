@@ -3,6 +3,7 @@ create table if not exists duels (
   onchain_id bigint unique,
   seed integer not null,
   stake_wei numeric,
+  token text,
   creator text not null,
   acceptor text,
   status text not null default 'draft',

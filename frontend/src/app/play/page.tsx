@@ -43,7 +43,7 @@ export default function PlayPage() {
         ) : <p>Saved to the Hall of Fame.</p>}
         <div className="row spread" style={{ marginTop: 8 }}>
           <button onClick={again}>Play again</button>
-          <a className="button" href="/duels/new"><button>Duel for USDm</button></a>
+          <a className="button" href="/duels/new"><button>Duel for stablecoins</button></a>
         </div>
       </Dialog95>
     </main>

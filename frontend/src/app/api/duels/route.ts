@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const duels = await listOpenDuels(viewer);
   return NextResponse.json({
     duels: duels.map((d) => ({
-      id: d.id, onchainId: d.onchainId, stakeWei: d.stakeWei,
+      id: d.id, onchainId: d.onchainId, stakeWei: d.stakeWei, token: d.token,
       creator: d.creator, challengeTo: d.challengeTo, createdAt: d.createdAt,
     })),
   });

@@ -1,12 +1,38 @@
 export const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as `0x${string}`;
 export const USDM_ADDRESS = (process.env.NEXT_PUBLIC_USDM_ADDRESS ??
   '0x765DE816845861e75A25fCA122bb6898B8B1282a') as `0x${string}`;
+export const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS ??
+  '0xcebA9300f2b948710d2653dD7B07f33A8B32118C') as `0x${string}`;
+export const USDT_ADDRESS = (process.env.NEXT_PUBLIC_USDT_ADDRESS ??
+  '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e') as `0x${string}`;
 
-export const STAKE_TIERS_WEI = [100000000000000000n, 500000000000000000n, 1000000000000000000n] as const;
+export interface StakeToken {
+  symbol: 'USDm' | 'USDC' | 'USDT';
+  address: `0x${string}`;
+  decimals: number;
+}
+
+export const STAKE_TOKENS: readonly StakeToken[] = [
+  { symbol: 'USDm', address: USDM_ADDRESS, decimals: 18 },
+  { symbol: 'USDC', address: USDC_ADDRESS, decimals: 6 },
+  { symbol: 'USDT', address: USDT_ADDRESS, decimals: 6 },
+] as const;
+
+export function tokenByAddress(address: string): StakeToken | undefined {
+  const a = address.toLowerCase();
+  return STAKE_TOKENS.find((t) => t.address.toLowerCase() === a);
+}
+
+/** Stake tiers 0.1 / 0.5 / 1 whole tokens, scaled to the token's decimals. */
+export function stakeTiersWei(token: StakeToken): [bigint, bigint, bigint] {
+  const unit = 10n ** BigInt(token.decimals);
+  return [unit / 10n, unit / 2n, unit];
+}
 
 export const duelEscrowAbi = [
   { type: 'function', name: 'createDuel', stateMutability: 'nonpayable',
-    inputs: [{ name: 'stake', type: 'uint96' }], outputs: [{ type: 'uint256' }] },
+    inputs: [{ name: 'token', type: 'address' }, { name: 'stake', type: 'uint96' }],
+    outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'acceptDuel', stateMutability: 'nonpayable',
     inputs: [{ name: 'id', type: 'uint256' }], outputs: [] },
   { type: 'function', name: 'settle', stateMutability: 'nonpayable',
@@ -20,7 +46,8 @@ export const duelEscrowAbi = [
   { type: 'event', name: 'DuelCreated', inputs: [
       { name: 'id', type: 'uint256', indexed: true },
       { name: 'creator', type: 'address', indexed: true },
-      { name: 'stake', type: 'uint96', indexed: false }] },
+      { name: 'stake', type: 'uint96', indexed: false },
+      { name: 'token', type: 'address', indexed: false }] },
   { type: 'event', name: 'DuelAccepted', inputs: [
       { name: 'id', type: 'uint256', indexed: true },
       { name: 'acceptor', type: 'address', indexed: true }] },

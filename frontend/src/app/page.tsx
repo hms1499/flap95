@@ -6,7 +6,7 @@ export default function Home() {
     <main className="desktop">
       <Window title="FLAP95.EXE">
         <p style={{ margin: '4px 0 8px' }}>
-          One-tap duels. Flap like it&apos;s 1995. Stake USDm, race the ghost, win the pot.
+          One-tap duels. Flap like it&apos;s 1995. Stake stablecoins, race the ghost, win the pot.
         </p>
       </Window>
       <nav className="desktop-icons">

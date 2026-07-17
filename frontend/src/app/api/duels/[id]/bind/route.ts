@@ -18,6 +18,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .filter((l) => l.args.creator.toLowerCase() === duel.creator);
   if (events.length !== 1) return NextResponse.json({ error: 'no matching DuelCreated event' }, { status: 400 });
 
-  await markFunded(duel.id, events[0].args.id, events[0].args.stake);
+  await markFunded(duel.id, events[0].args.id, events[0].args.stake, events[0].args.token);
   return NextResponse.json({ ok: true });
 }

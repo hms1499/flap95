@@ -7,6 +7,7 @@ export interface DuelRow {
   onchainId: string | null;
   seed: number;
   stakeWei: string | null;
+  token: string | null;
   creator: string;
   acceptor: string | null;
   status: DuelStatus;
@@ -26,6 +27,7 @@ function toRow(r: Record<string, unknown>): DuelRow {
     onchainId: r.onchain_id === null ? null : String(r.onchain_id),
     seed: r.seed as number,
     stakeWei: r.stake_wei === null ? null : String(r.stake_wei),
+    token: r.token as string | null,
     creator: r.creator as string,
     acceptor: r.acceptor as string | null,
     status: r.status as DuelStatus,
@@ -54,8 +56,9 @@ export async function getDuel(id: number): Promise<DuelRow | null> {
   return rows.length ? toRow(rows[0]) : null;
 }
 
-export async function markFunded(id: number, onchainId: bigint, stakeWei: bigint): Promise<void> {
+export async function markFunded(id: number, onchainId: bigint, stakeWei: bigint, token: string): Promise<void> {
   await sql`update duels set onchain_id = ${onchainId.toString()}, stake_wei = ${stakeWei.toString()},
+    token = ${token.toLowerCase()},
     status = 'funded', updated_at = now() where id = ${id} and status = 'draft'`;
 }
 
@@ -81,7 +84,7 @@ export async function setAcceptorResult(
 export async function listOpenDuels(viewer?: string): Promise<DuelRow[]> {
   const v = viewer?.toLowerCase() ?? '';
   const rows = await sql`
-    select id, onchain_id, seed, stake_wei, creator, acceptor, status, challenge_to, winner,
+    select id, onchain_id, seed, stake_wei, token, creator, acceptor, status, challenge_to, winner,
            settle_tx, created_at,
            null as creator_taps, null as creator_score, null as acceptor_taps, null as acceptor_score
     from duels

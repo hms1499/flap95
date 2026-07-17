@@ -2,11 +2,11 @@
 import { Suspense, useCallback, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccount, useConnect, usePublicClient, useWriteContract } from 'wagmi';
-import { formatEther } from 'viem';
+import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
 import { Dialog95 } from '@/components/Dialog95';
 import { GameCanvas } from '@/components/GameCanvas';
-import { ESCROW_ADDRESS, USDM_ADDRESS, STAKE_TIERS_WEI, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
+import { ESCROW_ADDRESS, STAKE_TOKENS, type StakeToken, stakeTiersWei, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 
 type Phase = 'pick-stake' | 'approving' | 'depositing' | 'binding' | 'playing' | 'submitting' | 'done' | 'error';
@@ -21,6 +21,7 @@ function CreateDuel() {
   const { writeContractAsync } = useWriteContract();
 
   const [phase, setPhase] = useState<Phase>('pick-stake');
+  const [token, setToken] = useState<StakeToken>(STAKE_TOKENS[0]);
   const [error, setError] = useState('');
   const [duel, setDuel] = useState<{ id: number; seed: number } | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
@@ -37,11 +38,11 @@ function CreateDuel() {
 
       setPhase('approving');
       const allowance = await publicClient.readContract({
-        address: USDM_ADDRESS, abi: erc20Abi, functionName: 'allowance', args: [address, ESCROW_ADDRESS],
+        address: token.address, abi: erc20Abi, functionName: 'allowance', args: [address, ESCROW_ADDRESS],
       });
       if (allowance < stake) {
         const approveTx = await writeContractAsync({
-          address: USDM_ADDRESS, abi: erc20Abi, functionName: 'approve',
+          address: token.address, abi: erc20Abi, functionName: 'approve',
           args: [ESCROW_ADDRESS, stake], ...feeCurrencyOverrides(),
         });
         await publicClient.waitForTransactionReceipt({ hash: approveTx });
@@ -50,7 +51,7 @@ function CreateDuel() {
       setPhase('depositing');
       const createTx = await writeContractAsync({
         address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'createDuel',
-        args: [stake], ...feeCurrencyOverrides(),
+        args: [token.address, stake], ...feeCurrencyOverrides(),
       });
 
       setPhase('binding');
@@ -93,19 +94,33 @@ function CreateDuel() {
       {phase === 'pick-stake' && (
         <Window title="NEWDUEL.EXE — pick your stake">
           {challenge && <p>Rematch challenge vs {challenge.slice(0, 8)}…</p>}
+          <p style={{ margin: '4px 0' }}>Currency:</p>
           <div className="row">
-            {STAKE_TIERS_WEI.map((s) => (
-              <button key={s.toString()} onClick={() => start(s)} style={{ flex: 1 }}>
-                {formatEther(s)} USDm
+            {STAKE_TOKENS.map((t) => (
+              <button
+                key={t.symbol}
+                onClick={() => setToken(t)}
+                style={{ flex: 1, fontWeight: t.symbol === token.symbol ? 'bold' : 'normal' }}
+                aria-pressed={t.symbol === token.symbol}
+              >
+                {t.symbol}
               </button>
             ))}
           </div>
-          <p style={{ fontSize: 12 }}>Winner takes the pot minus a 5% house fee. Ties refund both players.</p>
+          <p style={{ margin: '8px 0 4px' }}>Stake:</p>
+          <div className="row">
+            {stakeTiersWei(token).map((s) => (
+              <button key={s.toString()} onClick={() => start(s)} style={{ flex: 1 }}>
+                {formatUnits(s, token.decimals)} {token.symbol}
+              </button>
+            ))}
+          </div>
+          <p style={{ fontSize: 12 }}>Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
         </Window>
       )}
       {(phase === 'approving' || phase === 'depositing' || phase === 'binding') && (
         <Dialog95 title="Please wait…" open>
-          <p>⏳ {phase === 'approving' ? 'Approving USDm…' : phase === 'depositing' ? 'Depositing your stake…' : 'Confirming on-chain…'}</p>
+          <p>⏳ {phase === 'approving' ? `Approving ${token.symbol}…` : phase === 'depositing' ? 'Depositing your stake…' : 'Confirming on-chain…'}</p>
           <progress style={{ width: '100%' }} />
         </Dialog95>
       )}

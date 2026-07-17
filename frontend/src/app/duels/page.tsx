@@ -2,10 +2,16 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAccount } from 'wagmi';
-import { formatEther } from 'viem';
+import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
+import { tokenByAddress } from '@/lib/contracts';
 
-interface OpenDuel { id: number; stakeWei: string; creator: string; challengeTo: string | null; createdAt: string }
+interface OpenDuel { id: number; stakeWei: string; token: string | null; creator: string; challengeTo: string | null; createdAt: string }
+
+function stakeLabel(d: OpenDuel): string {
+  const t = d.token ? tokenByAddress(d.token) : undefined;
+  return `${formatUnits(BigInt(d.stakeWei), t?.decimals ?? 18)} ${t?.symbol ?? 'USDm'}`;
+}
 
 export default function DuelsPage() {
   const { address } = useAccount();
@@ -24,7 +30,7 @@ export default function DuelsPage() {
             {duels.map((d) => (
               <tr key={d.id}>
                 <td>⚔️ duel_{d.id}.exe<br /><small>{d.creator.slice(0, 8)}…{d.challengeTo ? ' · rematch' : ''}</small></td>
-                <td>{formatEther(BigInt(d.stakeWei))} USDm</td>
+                <td>{stakeLabel(d)}</td>
                 <td><Link href={`/duels/${d.id}`}><button>Open</button></Link></td>
               </tr>
             ))}
