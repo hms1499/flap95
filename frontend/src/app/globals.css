@@ -1,49 +1,27 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+html, body { margin: 0; padding: 0; background: #008080; min-height: 100dvh; }
+* { -webkit-tap-highlight-color: transparent; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.desktop { max-width: 420px; margin: 0 auto; padding: 12px; min-height: 100dvh; display: flex; flex-direction: column; gap: 12px; }
+.desktop-icons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.desktop-icon {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  min-height: 88px; padding: 12px 4px; color: #fff; text-decoration: none;
+  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif; text-align: center;
 }
+.desktop-icon:active { outline: 1px dotted #fff; }
+.desktop-icon .glyph { font-size: 40px; line-height: 1; }
 
-html {
-  height: 100%;
-}
+button, .button { min-height: 44px; min-width: 44px; font-size: 14px; }
+input, select { min-height: 40px; font-size: 16px; }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
+.dialog95-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.3);
+  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px;
 }
+.dialog95 { width: 100%; max-width: 340px; }
 
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-}
+.game-frame canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; touch-action: manipulation; }
+.row { display: flex; gap: 8px; align-items: center; }
+.spread { justify-content: space-between; }
+table.ledger { width: 100%; border-collapse: collapse; background: #fff; }
+table.ledger th, table.ledger td { border: 1px solid #808080; padding: 8px; font-size: 13px; text-align: left; }
