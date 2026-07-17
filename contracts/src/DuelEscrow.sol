@@ -71,8 +71,28 @@ contract DuelEscrow is Ownable, EIP712 {
         emit DuelAccepted(id, msg.sender);
     }
 
-    function settle(uint256, address, uint32, uint32, bytes calldata) external pure {
-        revert("not implemented"); // Task 5
+    function settleDigest(uint256 id, address winner, uint32 scoreA, uint32 scoreB)
+        public view returns (bytes32)
+    {
+        return _hashTypedDataV4(keccak256(abi.encode(SETTLE_TYPEHASH, id, winner, scoreA, scoreB)));
+    }
+
+    function settle(uint256 id, address winner, uint32 scoreA, uint32 scoreB, bytes calldata sig) external {
+        Duel storage d = duels[id];
+        if (d.status != Status.Accepted) revert WrongStatus();
+        if (ECDSA.recover(settleDigest(id, winner, scoreA, scoreB), sig) != oracle) revert BadSignature();
+        d.status = Status.Settled;
+        if (winner == address(0)) {
+            token.safeTransfer(d.creator, d.stake);
+            token.safeTransfer(d.acceptor, d.stake);
+        } else {
+            if (winner != d.creator && winner != d.acceptor) revert BadWinner();
+            uint256 pot = uint256(d.stake) * 2;
+            uint256 fee = (pot * FEE_BPS) / 10_000;
+            token.safeTransfer(treasury, fee);
+            token.safeTransfer(winner, pot - fee);
+        }
+        emit DuelSettled(id, winner, scoreA, scoreB);
     }
 
     function cancelExpired(uint256 id) external {

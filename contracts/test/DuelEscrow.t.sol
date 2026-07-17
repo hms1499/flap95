@@ -88,4 +88,72 @@ contract DuelEscrowTest is Test {
         vm.expectRevert(DuelEscrow.NotExpired.selector);
         escrow.cancelExpired(id);
     }
+
+    function _sign(uint256 id, address winner, uint32 a, uint32 b) internal view returns (bytes memory) {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(oraclePk, escrow.settleDigest(id, winner, a, b));
+        return abi.encodePacked(r, s, v);
+    }
+
+    function _acceptedDuel() internal returns (uint256 id) {
+        id = _create(1e18);
+        vm.prank(bob); escrow.acceptDuel(id);
+    }
+
+    function test_settle_paysWinnerMinusFee() public {
+        uint256 id = _acceptedDuel();
+        escrow.settle(id, bob, 3, 7, _sign(id, bob, 3, 7));
+        assertEq(token.balanceOf(bob), 99e18 + 1.9e18);      // staked 1, won 1.9
+        assertEq(token.balanceOf(treasury), 0.1e18);          // 5% of 2.0
+        (,,,, DuelEscrow.Status status) = escrow.duels(id);
+        assertEq(uint8(status), uint8(DuelEscrow.Status.Settled));
+    }
+
+    function test_settle_tieRefundsBothNoFee() public {
+        uint256 id = _acceptedDuel();
+        escrow.settle(id, address(0), 4, 4, _sign(id, address(0), 4, 4));
+        assertEq(token.balanceOf(alice), 100e18);
+        assertEq(token.balanceOf(bob), 100e18);
+        assertEq(token.balanceOf(treasury), 0);
+    }
+
+    function test_settle_rejectsNonOracleSignature() public {
+        uint256 id = _acceptedDuel();
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(0xBAD, escrow.settleDigest(id, bob, 1, 2));
+        vm.expectRevert(DuelEscrow.BadSignature.selector);
+        escrow.settle(id, bob, 1, 2, abi.encodePacked(r, s, v));
+    }
+
+    function test_settle_rejectsForeignWinner() public {
+        uint256 id = _acceptedDuel();
+        address mallory = address(0xBEEF);
+        bytes memory sig = _sign(id, mallory, 9, 1);
+        vm.expectRevert(DuelEscrow.BadWinner.selector);
+        escrow.settle(id, mallory, 9, 1, sig);
+    }
+
+    function test_settle_rejectsDoubleSettle() public {
+        uint256 id = _acceptedDuel();
+        escrow.settle(id, bob, 3, 7, _sign(id, bob, 3, 7));
+        bytes memory sig = _sign(id, bob, 3, 7);
+        vm.expectRevert(DuelEscrow.WrongStatus.selector);
+        escrow.settle(id, bob, 3, 7, sig);
+    }
+
+    function test_settle_rejectsOpenDuel() public {
+        uint256 id = _create(0.1e18);
+        bytes memory sig = _sign(id, alice, 1, 0);
+        vm.expectRevert(DuelEscrow.WrongStatus.selector);
+        escrow.settle(id, alice, 1, 0, sig);
+    }
+
+    function testFuzz_settle_conservesFunds(uint32 a, uint32 b) public {
+        uint256 id = _acceptedDuel();
+        address winner = a == b ? address(0) : (a > b ? alice : bob);
+        escrow.settle(id, winner, a, b, _sign(id, winner, a, b));
+        assertEq(
+            token.balanceOf(alice) + token.balanceOf(bob) + token.balanceOf(treasury),
+            200e18
+        );
+        assertEq(token.balanceOf(address(escrow)), 0);
+    }
 }
