@@ -1,0 +1,9 @@
+# Agent tooling (installed skills, not project code)
+.agents/
+.claude/
+skills-lock.json
+
+# Dependencies & env
+node_modules/
+.env*
+!.env.example
