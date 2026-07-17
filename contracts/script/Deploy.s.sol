@@ -7,11 +7,14 @@ import {DuelEscrow} from "../src/DuelEscrow.sol";
 
 contract Deploy is Script {
     function run() external {
-        address usdm = vm.envAddress("USDM_ADDRESS");
+        IERC20[] memory tokens = new IERC20[](3);
+        tokens[0] = IERC20(vm.envAddress("USDM_ADDRESS"));
+        tokens[1] = IERC20(vm.envAddress("USDC_ADDRESS"));
+        tokens[2] = IERC20(vm.envAddress("USDT_ADDRESS"));
         address oracle = vm.envAddress("ORACLE_ADDRESS");
         address treasury = vm.envAddress("TREASURY_ADDRESS");
         vm.startBroadcast();
-        new DuelEscrow(IERC20(usdm), oracle, treasury, msg.sender);
+        new DuelEscrow(tokens, oracle, treasury, msg.sender);
         vm.stopBroadcast();
     }
 }

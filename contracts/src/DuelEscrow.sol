@@ -2,12 +2,14 @@
 pragma solidity ^0.8.26;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /// @title Flap95 DuelEscrow — 1v1 skill-duel stakes settled by an oracle-signed result.
+/// @notice Stakes are held in any whitelisted stablecoin; both players stake the same token.
 contract DuelEscrow is Ownable, EIP712 {
     using SafeERC20 for IERC20;
 
@@ -19,6 +21,7 @@ contract DuelEscrow is Ownable, EIP712 {
         uint96 stake;
         uint40 createdAt;
         Status status;
+        IERC20 token;
     }
 
     bytes32 public constant SETTLE_TYPEHASH =
@@ -26,39 +29,47 @@ contract DuelEscrow is Ownable, EIP712 {
     uint256 public constant EXPIRY = 24 hours;
     uint256 public constant FEE_BPS = 500; // 5%
 
-    IERC20 public immutable token;
     address public oracle;
     address public treasury;
     uint256 public nextId;
     mapping(uint256 => Duel) public duels;
+    mapping(address => bool) public allowedTokens;
 
-    event DuelCreated(uint256 indexed id, address indexed creator, uint96 stake);
+    event DuelCreated(uint256 indexed id, address indexed creator, uint96 stake, address token);
     event DuelAccepted(uint256 indexed id, address indexed acceptor);
     event DuelSettled(uint256 indexed id, address winner, uint32 scoreA, uint32 scoreB);
     event DuelCancelled(uint256 indexed id);
+    event TokenSet(address indexed token, bool allowed);
 
     error InvalidStake();
+    error InvalidToken();
     error WrongStatus();
     error SelfAccept();
     error NotExpired();
     error BadWinner();
     error BadSignature();
 
-    constructor(IERC20 _token, address _oracle, address _treasury, address _owner)
+    constructor(IERC20[] memory _tokens, address _oracle, address _treasury, address _owner)
         Ownable(_owner)
         EIP712("Flap95", "1")
     {
-        token = _token;
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            allowedTokens[address(_tokens[i])] = true;
+            emit TokenSet(address(_tokens[i]), true);
+        }
         oracle = _oracle;
         treasury = _treasury;
     }
 
-    function createDuel(uint96 stake) external returns (uint256 id) {
-        if (stake != 0.1e18 && stake != 0.5e18 && stake != 1e18) revert InvalidStake();
+    function createDuel(IERC20 token, uint96 stake) external returns (uint256 id) {
+        if (!allowedTokens[address(token)]) revert InvalidToken();
+        // Tiers are 0.1 / 0.5 / 1 whole tokens, scaled to the token's decimals.
+        uint256 unit = 10 ** IERC20Metadata(address(token)).decimals();
+        if (stake != unit / 10 && stake != unit / 2 && stake != unit) revert InvalidStake();
         id = ++nextId;
-        duels[id] = Duel(msg.sender, address(0), stake, uint40(block.timestamp), Status.Open);
+        duels[id] = Duel(msg.sender, address(0), stake, uint40(block.timestamp), Status.Open, token);
         token.safeTransferFrom(msg.sender, address(this), stake);
-        emit DuelCreated(id, msg.sender, stake);
+        emit DuelCreated(id, msg.sender, stake, address(token));
     }
 
     function acceptDuel(uint256 id) external {
@@ -67,7 +78,7 @@ contract DuelEscrow is Ownable, EIP712 {
         if (msg.sender == d.creator) revert SelfAccept();
         d.acceptor = msg.sender;
         d.status = Status.Accepted;
-        token.safeTransferFrom(msg.sender, address(this), d.stake);
+        d.token.safeTransferFrom(msg.sender, address(this), d.stake);
         emit DuelAccepted(id, msg.sender);
     }
 
@@ -83,14 +94,14 @@ contract DuelEscrow is Ownable, EIP712 {
         if (ECDSA.recover(settleDigest(id, winner, scoreA, scoreB), sig) != oracle) revert BadSignature();
         d.status = Status.Settled;
         if (winner == address(0)) {
-            token.safeTransfer(d.creator, d.stake);
-            token.safeTransfer(d.acceptor, d.stake);
+            d.token.safeTransfer(d.creator, d.stake);
+            d.token.safeTransfer(d.acceptor, d.stake);
         } else {
             if (winner != d.creator && winner != d.acceptor) revert BadWinner();
             uint256 pot = uint256(d.stake) * 2;
             uint256 fee = (pot * FEE_BPS) / 10_000;
-            token.safeTransfer(treasury, fee);
-            token.safeTransfer(winner, pot - fee);
+            d.token.safeTransfer(treasury, fee);
+            d.token.safeTransfer(winner, pot - fee);
         }
         emit DuelSettled(id, winner, scoreA, scoreB);
     }
@@ -100,8 +111,13 @@ contract DuelEscrow is Ownable, EIP712 {
         if (d.status != Status.Open) revert WrongStatus();
         if (block.timestamp <= d.createdAt + EXPIRY) revert NotExpired();
         d.status = Status.Cancelled;
-        token.safeTransfer(d.creator, d.stake);
+        d.token.safeTransfer(d.creator, d.stake);
         emit DuelCancelled(id);
+    }
+
+    function setToken(address token, bool allowed) external onlyOwner {
+        allowedTokens[token] = allowed;
+        emit TokenSet(token, allowed);
     }
 
     function setOracle(address o) external onlyOwner { oracle = o; }
