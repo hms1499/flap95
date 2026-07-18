@@ -30,10 +30,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       : winner === 'creator' ? (duel.creator as Address)
       : (duel.acceptor as Address);
     const gotSettling = await markSettling(duel.id, r.ok ? taps : [], acceptorScore, winner);
-    let settleTx: string | null = null;
-    if (gotSettling) {
-      settleTx = await relaySettle(BigInt(duel.onchainId), winnerAddr, duel.creatorScore, acceptorScore);
-      if (settleTx) await markSettled(duel.id, settleTx);
+
+    if (!gotSettling) {
+      // Lost the race (e.g. the cron reconciler already forfeited this duel). relaySettle
+      // must stay unreachable here — report the authoritative persisted outcome instead of
+      // this request's own locally computed one, since the row was already settled by
+      // whoever won the race.
+      const fresh = await getDuel(duel.id);
+      if (fresh) {
+        return NextResponse.json({
+          ok: true, score: fresh.acceptorScore, winner: fresh.winner,
+          creatorScore: fresh.creatorScore, acceptorScore: fresh.acceptorScore, settleTx: fresh.settleTx,
+        });
+      }
+      // Row vanished — should not happen. Fall back to this request's own computation.
+      return NextResponse.json({
+        ok: true, score: acceptorScore, winner,
+        creatorScore: duel.creatorScore, acceptorScore, settleTx: null,
+      });
+    }
+
+    const settleTx = await relaySettle(BigInt(duel.onchainId), winnerAddr, duel.creatorScore, acceptorScore);
+    if (settleTx) {
+      try {
+        await markSettled(duel.id, settleTx);
+      } catch (err) {
+        // The on-chain settle already succeeded — don't lose the tx hash over a DB hiccup.
+        // Log with enough context to reconcile manually; otherwise the reconciler retries
+        // and relays again, reverting with WrongStatus() and burning gas.
+        console.error('markSettled failed after successful relay', { duelId: duel.id, settleTx, err });
+      }
     }
     return NextResponse.json({
       ok: true, score: acceptorScore, winner,
