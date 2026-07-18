@@ -22,6 +22,20 @@ export interface DuelRow {
   updatedAt: string;
 }
 
+// The Neon driver parses timestamp columns into JS Date objects, so String(date) would emit
+// Date.prototype.toString() ("Sat Jul 18 2026 12:00:00 GMT+0000 (...)"). Parsing that format
+// back with Date.parse is engine-specific and unspecified — an engine returning NaN silently
+// disables every staleness comparison downstream (notably the reclaim gate in the duel page).
+// Always emit ISO 8601, which Date.parse is required to handle.
+function toIso(v: unknown): string {
+  const d = v instanceof Date ? v : new Date(v as string | number);
+  if (Number.isNaN(d.getTime())) {
+    console.warn(`[duelStore] unparseable timestamp ${String(v)} — emitting raw value`);
+    return String(v);
+  }
+  return d.toISOString();
+}
+
 function toRow(r: Record<string, unknown>): DuelRow {
   return {
     id: r.id as number,
@@ -39,8 +53,8 @@ function toRow(r: Record<string, unknown>): DuelRow {
     challengeTo: r.challenge_to as string | null,
     winner: r.winner as DuelRow['winner'],
     settleTx: r.settle_tx as string | null,
-    createdAt: String(r.created_at),
-    updatedAt: String(r.updated_at ?? r.created_at),
+    createdAt: toIso(r.created_at),
+    updatedAt: toIso(r.updated_at ?? r.created_at),
   };
 }
 
@@ -95,24 +109,44 @@ export async function markSettled(id: number, settleTx: string): Promise<boolean
   return rows.length > 0;
 }
 
-// Syncs a row to an on-chain-resolved status (Cancelled/Settled) discovered by a chain
-// read elsewhere (reconciler pre-flight, refunded route). The guard restricts the UPDATE
-// to rows still in 'accepted'/'settling' so a row that already reached a terminal state
-// (e.g. a legitimately settled row) can never be clobbered. settle_tx is only set when the
-// row doesn't already have one — a Settled duel may already carry a legitimate hash.
-// Returns false if the guard did not match or the on-chain status doesn't map to a
-// terminal DB state (Open/None never reach here for these rows; logged and no-op).
+// Syncs a row to the status the chain itself reports, as discovered by a chain read
+// elsewhere (reconciler pre-flight, refunded route). Chain state is authoritative, but the
+// sync must never move a row BACKWARDS out of a terminal state or clobber a more advanced
+// one, so each on-chain status has its own `where` guard naming only the DB statuses it is
+// legal to move FROM. settle_tx is only set when the row doesn't already have one — a
+// Settled duel may already carry a legitimate hash.
+// Returns false if the guard did not match (row already in the target state, or in a more
+// advanced one) or the on-chain status doesn't map to a DB state (None; logged and no-op).
 export async function markChainResolved(id: number, onchainStatus: number, settleTx?: string): Promise<boolean> {
+  // Cancelled — reachable from any non-terminal state (refundStale from Accepted,
+  // cancelExpired from Open).
   if (onchainStatus === 4) {
     const rows = await sql`update duels set status = 'cancelled', updated_at = now()
-      where id = ${id} and status in ('accepted', 'settling')
+      where id = ${id} and status in ('funded', 'open', 'accepted', 'settling')
       returning id`;
     return rows.length > 0;
   }
+  // Settled — the pot has been paid out on-chain; terminal.
   if (onchainStatus === 3) {
     const rows = await sql`update duels set status = 'settled', updated_at = now(),
       settle_tx = coalesce(settle_tx, ${settleTx ?? null})
-      where id = ${id} and status in ('accepted', 'settling')
+      where id = ${id} and status in ('funded', 'open', 'accepted', 'settling')
+      returning id`;
+    return rows.length > 0;
+  }
+  // Accepted — the acceptDuel tx landed but POST /accept died before markAccepted. Only
+  // rows that haven't advanced past 'open' may move here; never pull back a settling row.
+  if (onchainStatus === 2) {
+    const rows = await sql`update duels set status = 'accepted', updated_at = now()
+      where id = ${id} and status in ('funded', 'open')
+      returning id`;
+    return rows.length > 0;
+  }
+  // Open — nobody ever accepted on-chain, so a DB row claiming otherwise is wrong.
+  // 'settling'/terminal rows are excluded: those imply a settle path we must not undo.
+  if (onchainStatus === 1) {
+    const rows = await sql`update duels set status = 'open', updated_at = now()
+      where id = ${id} and status in ('funded', 'accepted')
       returning id`;
     return rows.length > 0;
   }
@@ -125,6 +159,7 @@ export async function listReconcileCandidates(): Promise<DuelRow[]> {
     select * from duels
     where (status = 'settling' and updated_at < now() - interval '5 minutes')
        or (status = 'accepted' and updated_at < now() - interval '30 minutes')
+       or (status in ('open', 'funded') and updated_at < now() - interval '24 hours')
     order by updated_at asc limit 100`;
   return rows.map(toRow);
 }

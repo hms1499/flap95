@@ -8,12 +8,13 @@ import { listReconcileCandidates, markSettling, markSettled, markChainResolved, 
 import { planReconcileAction } from '@/lib/reconcile';
 
 export const dynamic = 'force-dynamic';
-// Up to 100 sequential on-chain broadcasts can run per invocation — give this route real
-// headroom, and pair it with the wall-clock budget below so we bail out safely before the
-// platform kills the invocation outright.
+// Sequential on-chain relays run per invocation — give this route real headroom, and pair
+// it with the wall-clock budget below so we bail out safely before the platform kills the
+// invocation outright. relaySettle now awaits each receipt (so a revert reads as failure),
+// which means roughly 10 duels clear per run rather than 100. That is fine at a 10-minute
+// cadence, and the `remaining` count in the response surfaces any real backlog.
 export const maxDuration = 60;
 
-const LOW_CELO = 5n * 10n ** 17n; // 0.5 CELO
 const LOW_USDM = 1n * 10n ** 18n; // 1 USDm
 // Safe margin under maxDuration (seconds) — leaves headroom for the final DB write + response.
 const TIME_BUDGET_MS = 50_000;
@@ -52,15 +53,26 @@ async function run(req: Request) {
   // the loop later times out. relaySettle pays its fee in USDm unconditionally (see
   // oracle.ts), so USDm is the authoritative signal: CELO is still reported as useful
   // operational context, but it must not mask a USDm shortfall.
+  //
+  // This is a *diagnostic* read, so it must never gate the liveness work: one transient RPC
+  // failure here used to 500 the whole invocation and reconcile nothing for that tick. On
+  // failure we report null balances and lowGas: null ("unknown", distinct from false) and
+  // carry on into the loop.
   const oracle = oracleAddress();
-  const celoBal = await publicClient.getBalance({ address: oracle });
-  const usdmBal = await publicClient.readContract({
-    address: USDM_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: [oracle],
-  });
-  const lowGas = usdmBal < LOW_USDM;
-  if (lowGas) console.warn(`[reconcile] LOW ORACLE GAS celo=${formatEther(celoBal)} usdm=${formatEther(usdmBal)}`);
+  let celoBal: bigint | null = null;
+  let usdmBal: bigint | null = null;
+  let lowGas: boolean | null = null;
+  try {
+    celoBal = await publicClient.getBalance({ address: oracle });
+    usdmBal = await publicClient.readContract({
+      address: USDM_ADDRESS, abi: erc20Abi, functionName: 'balanceOf', args: [oracle],
+    });
+    lowGas = usdmBal < LOW_USDM;
+    if (lowGas) console.warn(`[reconcile] LOW ORACLE GAS celo=${formatEther(celoBal)} usdm=${formatEther(usdmBal)}`);
+  } catch (err) {
+    console.error('[reconcile] oracle balance read failed — continuing without gas health', err);
+  }
 
-  const now = Date.now();
   const startedAt = Date.now();
   const results: { id: number; action: string; settleTx?: string | null; onchainStatus?: number }[] = [];
   const candidates = await listReconcileCandidates();
@@ -74,32 +86,67 @@ async function run(req: Request) {
     const d = candidates[i];
     // Declared outside the try so the catch block can still report the tx hash if
     // markSettled throws after relaySettle already succeeded — real money moved and that
-    // hash must not be lost.
+    // hash must not be lost. `action` is likewise hoisted so a failure is triageable: the
+    // log must say whether the row that blew up was a forfeit or a retry.
     let settleTx: string | null = null;
+    let action: string = 'pre-flight';
     try {
-      const action = planReconcileAction(d, now);
-      if (action === 'skip') { continue; }
-      if (action === 'stale-alert') {
-        console.warn(`[reconcile] duel ${d.id} stuck >24h — refundStale is available on-chain`);
-        results.push({ id: d.id, action });
-        continue;
-      }
-      if (!d.onchainId || d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete' }); continue; }
+      if (!d.onchainId) { results.push({ id: d.id, action: 'skip-no-onchain-id' }); continue; }
 
       // Authoritative pre-flight: the DB row can diverge from chain truth for any reason
       // (reclaim via refundStale being the motivating case, but not the only one). Read
       // the real on-chain status before ever relaying settle() — a duel already resolved
       // on-chain (Cancelled/Settled/Open/None) must never be relayed again, since settle()
       // would revert and relaySettle broadcasts without simulating first.
+      //
+      // This read sits ABOVE the action switch so EVERY candidate gets chain-checked,
+      // including rows that the planner would skip or merely alert on. Those used to
+      // `continue` before ever being reconciled against the chain, which is how DB/chain
+      // divergence (a landed acceptDuel whose binding died, a duel nobody accepted) stayed
+      // stranded indefinitely.
       const onchainDuel = await publicClient.readContract({
         address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'duels', args: [BigInt(d.onchainId)],
       });
       const onchainStatus = onchainDuel[4];
-      if (onchainStatus !== 2) {
+
+      // Settled/Cancelled — the escrow already paid out or refunded. Terminal: sync and
+      // never relay.
+      if (onchainStatus === 3 || onchainStatus === 4) {
+        action = 'skip-chain-resolved';
         await markChainResolved(d.id, onchainStatus);
-        results.push({ id: d.id, action: 'skip-chain-resolved', onchainStatus });
+        results.push({ id: d.id, action, onchainStatus });
         continue;
       }
+      // Open — nobody ever accepted, so there is nothing to settle and only the creator's
+      // stake is at risk. We deliberately do NOT call cancelExpired from the oracle: the
+      // refund goes to the creator, and we're not spending oracle gas to hand users back
+      // their own money. The creator reclaims it themselves from the duel page.
+      if (onchainStatus === 1) {
+        action = 'chain-open-unaccepted';
+        await markChainResolved(d.id, onchainStatus);
+        results.push({ id: d.id, action, onchainStatus });
+        continue;
+      }
+      // None — no such duel on-chain (bad onchain_id, or a create that never landed).
+      // Nothing to sync to; leave the row alone for a human.
+      if (onchainStatus !== 2) {
+        action = 'skip-chain-none';
+        console.warn(`[reconcile] duel ${d.id} has no on-chain record (status ${onchainStatus})`);
+        results.push({ id: d.id, action, onchainStatus });
+        continue;
+      }
+
+      // Chain says Accepted — the row is genuinely live and the planner decides from here.
+      action = planReconcileAction(d, startedAt);
+      // Recorded rather than silently dropped so `processed` reflects rows examined, not
+      // just rows acted on.
+      if (action === 'skip') { results.push({ id: d.id, action, onchainStatus }); continue; }
+      if (action === 'stale-alert') {
+        console.warn(`[reconcile] duel ${d.id} stuck >24h — refundStale is available on-chain`);
+        results.push({ id: d.id, action, onchainStatus });
+        continue;
+      }
+      if (d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete' }); continue; }
 
       if (action === 'forfeit') {
         // markSettling's guarded UPDATE (where status = 'accepted') is our atomic claim on
@@ -139,14 +186,23 @@ async function run(req: Request) {
       // (permanent head-of-line block). If relaySettle already succeeded and the throw came
       // from markSettled, settleTx (captured above) preserves the hash so a human can
       // reconcile the real on-chain settlement manually instead of it being silently lost.
-      console.error('[reconcile] duel failed, skipping', { duelId: d.id, settleTx, err });
-      results.push({ id: d.id, action: 'error', settleTx });
+      console.error('[reconcile] duel failed, skipping', { duelId: d.id, action, settleTx, err });
+      results.push({ id: d.id, action: `error:${action}`, settleTx });
     }
   }
 
+  // `processed` counts every row examined (skips included), so it can no longer undercount
+  // the work the run actually did; `acted` is the subset that changed something on-chain
+  // or in the DB.
+  const acted = results.filter((r) => !r.action.startsWith('skip')).length;
   return NextResponse.json({
-    processed: results.length, results, remaining,
-    oracle: { address: oracle, celoBal: celoBal.toString(), usdmBal: usdmBal.toString(), lowGas },
+    processed: results.length, acted, results, remaining,
+    oracle: {
+      address: oracle,
+      celoBal: celoBal === null ? null : celoBal.toString(),
+      usdmBal: usdmBal === null ? null : usdmBal.toString(),
+      lowGas,
+    },
   });
 }
 
