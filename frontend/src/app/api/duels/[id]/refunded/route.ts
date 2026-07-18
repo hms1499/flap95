@@ -10,11 +10,19 @@ import { getDuel, markChainResolved } from '@/lib/duelStore';
 // repeatedly (idempotent): a call on an already-synced or still-Accepted row is a no-op.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const d = await getDuel(Number(id));
+  const numId = Number(id);
+  if (!Number.isInteger(numId)) {
+    return NextResponse.json({ error: 'not found' }, { status: 404 });
+  }
+  const d = await getDuel(numId);
   if (!d) return NextResponse.json({ error: 'not found' }, { status: 404 });
 
   if (!d.onchainId) {
     return NextResponse.json({ id: d.id, action: 'skip-no-onchain-id' });
+  }
+
+  if (d.status !== 'accepted' && d.status !== 'settling') {
+    return NextResponse.json({ id: d.id, action: 'already-terminal' });
   }
 
   const onchainDuel = await publicClient.readContract({
