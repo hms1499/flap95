@@ -80,14 +80,23 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   }
 
   async function reclaim() {
-    if (!detail?.onchainId) return;
+    if (!detail || !address || !publicClient || !detail.onchainId) return;
     try {
       setPhase('reclaiming');
       const tx = await writeContractAsync({
         address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'refundStale',
         args: [BigInt(detail.onchainId)], ...feeCurrencyOverrides(),
       });
-      await publicClient!.waitForTransactionReceipt({ hash: tx });
+      await publicClient.waitForTransactionReceipt({ hash: tx });
+      // Sync the DB immediately so the reconciler doesn't try to relay settle() against a
+      // duel that's already Cancelled on-chain. Best-effort: the refund already succeeded
+      // on-chain, so a failure here must not surface as "Reclaim failed" — the reconciler's
+      // chain pre-flight is the backstop that will catch it on the next tick.
+      try {
+        await fetch(`/api/duels/${detail.id}/refunded`, { method: 'POST' });
+      } catch (syncErr) {
+        console.error('refunded sync failed (non-fatal, reconciler will catch up)', syncErr);
+      }
       router.push('/duels');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Reclaim failed');

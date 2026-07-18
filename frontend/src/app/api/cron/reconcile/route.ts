@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { timingSafeEqual } from 'crypto';
 import { zeroAddress, formatEther, type Address } from 'viem';
 import { publicClient } from '@/lib/chain';
-import { USDM_ADDRESS, erc20Abi } from '@/lib/contracts';
+import { ESCROW_ADDRESS, USDM_ADDRESS, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
 import { relaySettle, oracleAddress } from '@/lib/oracle';
-import { listReconcileCandidates, markSettling, markSettled, type DuelRow } from '@/lib/duelStore';
+import { listReconcileCandidates, markSettling, markSettled, markChainResolved, type DuelRow } from '@/lib/duelStore';
 import { planReconcileAction } from '@/lib/reconcile';
 
 export const dynamic = 'force-dynamic';
@@ -62,7 +62,7 @@ async function run(req: Request) {
 
   const now = Date.now();
   const startedAt = Date.now();
-  const results: { id: number; action: string; settleTx?: string | null }[] = [];
+  const results: { id: number; action: string; settleTx?: string | null; onchainStatus?: number }[] = [];
   const candidates = await listReconcileCandidates();
   let remaining = 0;
 
@@ -85,6 +85,21 @@ async function run(req: Request) {
         continue;
       }
       if (!d.onchainId || d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete' }); continue; }
+
+      // Authoritative pre-flight: the DB row can diverge from chain truth for any reason
+      // (reclaim via refundStale being the motivating case, but not the only one). Read
+      // the real on-chain status before ever relaying settle() — a duel already resolved
+      // on-chain (Cancelled/Settled/Open/None) must never be relayed again, since settle()
+      // would revert and relaySettle broadcasts without simulating first.
+      const onchainDuel = await publicClient.readContract({
+        address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'duels', args: [BigInt(d.onchainId)],
+      });
+      const onchainStatus = onchainDuel[4];
+      if (onchainStatus !== 2) {
+        await markChainResolved(d.id, onchainStatus);
+        results.push({ id: d.id, action: 'skip-chain-resolved', onchainStatus });
+        continue;
+      }
 
       if (action === 'forfeit') {
         // markSettling's guarded UPDATE (where status = 'accepted') is our atomic claim on

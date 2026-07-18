@@ -45,6 +45,17 @@ export const duelEscrowAbi = [
     inputs: [{ name: 'id', type: 'uint256' }], outputs: [] },
   { type: 'function', name: 'refundStale', stateMutability: 'nonpayable',
     inputs: [{ name: 'id', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'duels', stateMutability: 'view',
+    inputs: [{ name: '', type: 'uint256' }],
+    outputs: [
+      { name: 'creator', type: 'address' },
+      { name: 'acceptor', type: 'address' },
+      { name: 'stake', type: 'uint96' },
+      { name: 'createdAt', type: 'uint40' },
+      { name: 'status', type: 'uint8' },
+      { name: 'token', type: 'address' },
+      { name: 'acceptedAt', type: 'uint40' },
+    ] },
   { type: 'event', name: 'DuelCreated', inputs: [
       { name: 'id', type: 'uint256', indexed: true },
       { name: 'creator', type: 'address', indexed: true },

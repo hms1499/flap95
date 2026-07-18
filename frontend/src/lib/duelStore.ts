@@ -95,6 +95,31 @@ export async function markSettled(id: number, settleTx: string): Promise<boolean
   return rows.length > 0;
 }
 
+// Syncs a row to an on-chain-resolved status (Cancelled/Settled) discovered by a chain
+// read elsewhere (reconciler pre-flight, refunded route). The guard restricts the UPDATE
+// to rows still in 'accepted'/'settling' so a row that already reached a terminal state
+// (e.g. a legitimately settled row) can never be clobbered. settle_tx is only set when the
+// row doesn't already have one — a Settled duel may already carry a legitimate hash.
+// Returns false if the guard did not match or the on-chain status doesn't map to a
+// terminal DB state (Open/None never reach here for these rows; logged and no-op).
+export async function markChainResolved(id: number, onchainStatus: number, settleTx?: string): Promise<boolean> {
+  if (onchainStatus === 4) {
+    const rows = await sql`update duels set status = 'cancelled', updated_at = now()
+      where id = ${id} and status in ('accepted', 'settling')
+      returning id`;
+    return rows.length > 0;
+  }
+  if (onchainStatus === 3) {
+    const rows = await sql`update duels set status = 'settled', updated_at = now(),
+      settle_tx = coalesce(settle_tx, ${settleTx ?? null})
+      where id = ${id} and status in ('accepted', 'settling')
+      returning id`;
+    return rows.length > 0;
+  }
+  console.warn(`[duelStore] markChainResolved: duel ${id} has unexpected onchain status ${onchainStatus} — no-op`);
+  return false;
+}
+
 export async function listReconcileCandidates(): Promise<DuelRow[]> {
   const rows = await sql`
     select * from duels
