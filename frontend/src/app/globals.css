@@ -1,27 +1,357 @@
-html, body { margin: 0; padding: 0; background: #008080; min-height: 100dvh; }
+/* ============================================================
+   Flap95 — visual identity
+   Windows 95 desktop + Flappy Bird + stablecoin duels.
+   Accent palette pulled from the game's own pixels so the
+   shell and the game read as one continuous world.
+   ============================================================ */
+
+:root {
+  /* Desktop — authentic Win95 teal (non-negotiable, it IS Win95) */
+  --teal: #008080;
+
+  /* Chrome / bevels — the 98.css silver system */
+  --chrome: #c0c0c0;
+  --chrome-dark: #808080;
+  --chrome-darker: #000;
+  --chrome-light: #dfdfdf;
+  --chrome-white: #fff;
+
+  /* Active title bar — authentic navy→azure gradient */
+  --title-a: #000080;
+  --title-b: #1084d0;
+
+  /* Accents lifted straight from the game canvas */
+  --bird: #ffd700; /* the player bird — brand gold, used sparingly */
+  --bird-dark: #c8860b;
+  --pipe: #2e8b2e; /* pipes — money / stake / win (green = the pot) */
+  --pipe-dark: #1f5f1f;
+  --sky: #7ec0ee; /* the game sky — hero + boot atmosphere */
+
+  --ink: #000;
+}
+
+html, body { margin: 0; padding: 0; background: var(--teal); min-height: 100dvh; }
 * { -webkit-tap-highlight-color: transparent; }
 
-.desktop { max-width: 420px; margin: 0 auto; padding: 12px; min-height: 100dvh; display: flex; flex-direction: column; gap: 12px; }
-.desktop-icons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-.desktop-icon {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  min-height: 88px; padding: 12px 4px; color: #fff; text-decoration: none;
-  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif; text-align: center;
+/* Faint static CRT scanlines — texture, not motion. Very low opacity. */
+body::after {
+  content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom, rgba(0,0,0,.05) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply; opacity: .5;
 }
-.desktop-icon:active { outline: 1px dotted #fff; }
-.desktop-icon .glyph { font-size: 40px; line-height: 1; }
 
+/* ---- Desktop workspace ---- */
+.desktop {
+  position: relative; z-index: 2;
+  max-width: 420px; margin: 0 auto;
+  padding: 12px 12px calc(60px + env(safe-area-inset-bottom));
+  min-height: 100dvh; display: flex; flex-direction: column; gap: 12px;
+}
+
+.desktop-icons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.desktop-icon {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  min-height: 92px; padding: 12px 4px; color: #fff; text-decoration: none;
+  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif; text-align: center;
+  border: 1px solid transparent;
+}
+.desktop-icon .glyph {
+  font-size: 40px; line-height: 1;
+  filter: drop-shadow(2px 2px 0 rgba(0,0,0,.35));
+  transition: transform .12s steps(2);
+}
+.desktop-icon:hover .glyph { transform: translateY(-3px); }
+.desktop-icon:hover { border: 1px dotted rgba(255,255,255,.7); }
+.desktop-icon:active { outline: 1px dotted #fff; }
+.desktop-icon:focus-visible { outline: 2px dotted #fff; outline-offset: 2px; }
+.desktop-icon span:last-child {
+  padding: 1px 4px; background: rgba(0,0,0,.001);
+}
+
+/* Generic tap targets (mobile-first) */
 button, .button { min-height: 44px; min-width: 44px; font-size: 14px; }
 input, select { min-height: 40px; font-size: 16px; }
 
+/* Monospace data — scores, stakes, addresses. Echoes the in-game HUD. */
+.mono { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+.stake { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  color: var(--pipe-dark); font-weight: 700; }
+.win { color: var(--pipe-dark); font-weight: 700; }
+
+/* ============================================================
+   HERO — the thesis: you are booting into an OS.
+   ============================================================ */
+.hero { display: flex; flex-direction: column; gap: 12px; }
+.hero__plate {
+  background:
+    linear-gradient(180deg, #a9daf6 0%, var(--sky) 55%, #6fb3e3 100%);
+  border: 2px solid; border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+  box-shadow: inset 1px 1px 0 #000, inset -1px -1px 0 var(--chrome-light);
+  padding: 18px 12px 16px; display: flex; align-items: center; gap: 14px;
+}
+.hero__plate .pixelbird { width: 56px; height: 56px; flex: none;
+  filter: drop-shadow(3px 3px 0 rgba(0,0,0,.3)); }
+
+.wordmark {
+  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
+  font-weight: 700; line-height: .9; letter-spacing: 1px;
+  font-size: 40px; color: var(--bird);
+  text-shadow:
+    2px 0 0 var(--bird-dark), 0 2px 0 var(--bird-dark),
+    2px 2px 0 var(--bird-dark), 3px 3px 0 rgba(0,0,0,.55);
+  -webkit-text-stroke: 1px #000;
+}
+.wordmark small {
+  display: block; font-size: 11px; letter-spacing: 3px; margin-top: 4px;
+  color: #06303f; text-shadow: none; -webkit-text-stroke: 0; font-weight: 700;
+}
+
+.pitch { margin: 0; font-size: 14px; }
+
+.cta-row { display: flex; gap: 8px; }
+.cta {
+  flex: 1; text-decoration: none; text-align: center;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 52px; padding: 6px 10px; font-size: 15px; font-weight: 700;
+  color: #000; background: var(--chrome);
+  border: 2px solid; border-color: var(--chrome-white) var(--chrome-dark) var(--chrome-dark) var(--chrome-white);
+  box-shadow: inset 1px 1px 0 var(--chrome-light), inset -1px -1px 0 #000;
+  border-top-width: 3px; border-top-color: var(--bird);
+}
+.cta.cta--duel { border-top-color: var(--pipe); }
+.cta:active {
+  border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+  box-shadow: inset -1px -1px 0 var(--chrome-light), inset 1px 1px 0 #000;
+  padding: 7px 9px 5px 11px;
+}
+.cta:focus-visible { outline: 2px dotted #000; outline-offset: 2px; }
+
+/* House-rules marquee — period-authentic, single moving element */
+.marquee {
+  overflow: hidden; white-space: nowrap; border: 1px solid var(--chrome-dark);
+  background: #000; color: var(--pipe); font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px; padding: 4px 0; box-shadow: inset 1px 1px 2px rgba(0,0,0,.8);
+}
+.marquee__track { display: inline-block; padding-left: 100%; animation: marquee 16s linear infinite; }
+.marquee__track b { color: var(--bird); }
+@keyframes marquee { to { transform: translateX(-100%); } }
+
+/* ============================================================
+   TASKBAR — the signature. Live Win95 taskbar = mobile nav.
+   ============================================================ */
+.taskbar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+  background: var(--chrome);
+  border-top: 1px solid var(--chrome-white);
+  box-shadow: inset 0 1px 0 var(--chrome-light);
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom));
+}
+.taskbar__inner { max-width: 420px; margin: 0 auto; display: flex; align-items: center; gap: 6px; }
+
+.start-btn {
+  display: flex; align-items: center; gap: 6px; flex: none;
+  min-height: 40px; padding: 4px 12px 4px 8px; font-weight: 700; font-size: 14px;
+  color: #000; cursor: pointer; background: var(--chrome);
+  border: 2px solid; border-color: var(--chrome-white) var(--chrome-dark) var(--chrome-dark) var(--chrome-white);
+  box-shadow: inset 1px 1px 0 var(--chrome-light), inset -1px -1px 0 #000;
+}
+.start-btn .pixelbird { width: 22px; height: 22px; }
+.start-btn[aria-expanded='true'] {
+  border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+  box-shadow: inset -1px -1px 0 var(--chrome-light), inset 1px 1px 0 #000;
+}
+
+.task-btn {
+  flex: 1; min-width: 0; text-align: left;
+  min-height: 40px; padding: 4px 10px; font-size: 13px; font-weight: 700;
+  color: #000; background: var(--chrome);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 2px solid; border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+  box-shadow: inset -1px -1px 0 var(--chrome-light), inset 1px 1px 0 #000;
+}
+
+.tray {
+  display: flex; align-items: center; gap: 6px; flex: none;
+  padding: 3px 6px; border: 1px solid;
+  border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+}
+.tray__clock {
+  font-family: 'Cascadia Mono', Consolas, monospace; font-size: 13px;
+  min-width: 42px; text-align: center;
+}
+.wallet-chip {
+  display: flex; align-items: center; gap: 4px; min-height: 34px; padding: 2px 8px;
+  font-size: 12px; font-family: 'Cascadia Mono', Consolas, monospace; cursor: pointer;
+  color: #000; background: var(--chrome);
+  border: 2px solid; border-color: var(--chrome-white) var(--chrome-dark) var(--chrome-dark) var(--chrome-white);
+}
+.wallet-chip.is-live { color: var(--pipe-dark); font-weight: 700; }
+.wallet-chip .dot { width: 8px; height: 8px; background: var(--pipe); border: 1px solid #0a3d0a; }
+
+/* Start menu popup */
+.start-menu {
+  position: fixed; left: 0; bottom: calc(52px + env(safe-area-inset-bottom)); z-index: 45;
+  width: 232px; display: flex;
+  background: var(--chrome);
+  border: 2px solid; border-color: var(--chrome-white) var(--chrome-dark) var(--chrome-dark) var(--chrome-white);
+  box-shadow: 2px 2px 0 rgba(0,0,0,.4), inset 1px 1px 0 var(--chrome-light);
+}
+.start-menu__brand {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  background: linear-gradient(180deg, var(--title-a), var(--title-b));
+  color: #fff; font-weight: 700; font-size: 20px; letter-spacing: 2px;
+  padding: 14px 6px; text-align: right;
+  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif;
+}
+.start-menu__brand b { color: var(--bird); }
+.start-menu__list { flex: 1; padding: 3px; }
+.start-menu__item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; text-decoration: none; color: #000; font-size: 14px;
+  border: 1px solid transparent;
+}
+.start-menu__item .ico { font-size: 20px; width: 22px; text-align: center; }
+.start-menu__item:hover, .start-menu__item.is-active {
+  background: var(--title-a); color: #fff;
+}
+.start-menu__sep { height: 2px; margin: 3px 6px;
+  border-top: 1px solid var(--chrome-dark); border-bottom: 1px solid var(--chrome-white); }
+.start-menu__foot { padding: 8px 10px; font-size: 11px; color: var(--chrome-dark); }
+
+.start-scrim { position: fixed; inset: 0; z-index: 44; }
+
+/* ============================================================
+   BOOT SPLASH — once per session, tap to skip, ~1.3s.
+   ============================================================ */
+.boot {
+  position: fixed; inset: 0; z-index: 100; background: var(--teal);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  animation: bootfade .35s ease .95s forwards;
+}
+.boot__panel {
+  width: 100%; max-width: 320px; background: var(--chrome);
+  border: 2px solid; border-color: var(--chrome-white) var(--chrome-dark) var(--chrome-dark) var(--chrome-white);
+  box-shadow: 3px 3px 0 rgba(0,0,0,.35), inset 1px 1px 0 var(--chrome-light);
+  padding: 22px 20px 18px; text-align: center;
+}
+.boot__panel .pixelbird { width: 64px; height: 64px; margin: 0 auto 12px;
+  animation: bootflap .5s steps(2) infinite; }
+.boot__panel .wordmark { font-size: 34px; }
+.boot__bar {
+  margin-top: 16px; height: 18px; background: #fff; overflow: hidden;
+  border: 1px solid; border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+}
+.boot__bar span {
+  display: block; height: 100%; width: 0; background: var(--title-a);
+  background-image: linear-gradient(90deg, var(--title-a) 0 60%, var(--title-b) 100%);
+  animation: bootbar 1.15s steps(20) forwards;
+}
+.boot__hint { margin: 10px 0 0; font-size: 11px; color: var(--chrome-dark); }
+@keyframes bootbar { to { width: 100%; } }
+@keyframes bootflap { 50% { transform: translateY(-4px); } }
+@keyframes bootfade { to { opacity: 0; visibility: hidden; } }
+
+/* ---- Dialogs ---- */
 .dialog95-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.3);
-  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px;
+  position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 50;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
 }
 .dialog95 { width: 100%; max-width: 340px; }
 
+/* ---- Game ---- */
+.game-frame { border: 2px solid;
+  border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark); }
 .game-frame canvas { width: 100%; height: auto; display: block; image-rendering: pixelated; touch-action: manipulation; }
+
+/* ---- Layout helpers ---- */
 .row { display: flex; gap: 8px; align-items: center; }
 .spread { justify-content: space-between; }
+
+/* ---- Ledger tables (HALLOFFAME.XLS et al.) ---- */
 table.ledger { width: 100%; border-collapse: collapse; background: #fff; }
-table.ledger th, table.ledger td { border: 1px solid #808080; padding: 8px; font-size: 13px; text-align: left; }
+table.ledger th, table.ledger td { border: 1px solid var(--chrome-dark); padding: 8px; font-size: 13px; text-align: left; }
+table.ledger th {
+  background: var(--chrome); font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
+}
+table.ledger td:last-child { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+
+/* ============================================================
+   DUEL FLOW — transaction dialogs (installer-style) + result.
+   Boldness is spent on the result screen; the tx dialogs stay
+   clean and legible so players always know where they are.
+   ============================================================ */
+.tx { display: flex; flex-direction: column; gap: 12px; }
+.tx__head { display: flex; align-items: center; gap: 10px; }
+.tx__head .pixelbird { width: 30px; height: 30px; flex: none; animation: bootflap .6s steps(2) infinite; }
+.tx__head b { font-size: 14px; }
+
+.tx-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tx-step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--chrome-dark); }
+.tx-step__mark {
+  width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; background: #fff; color: var(--chrome-dark);
+  border: 1px solid; border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark);
+}
+.tx-step.is-done { color: #000; }
+.tx-step.is-done .tx-step__mark { color: var(--pipe-dark); }
+.tx-step.is-active { color: #000; font-weight: 700; }
+.tx-step.is-active .tx-step__mark {
+  background: var(--title-a); color: #fff; animation: txpulse 1s steps(2) infinite;
+}
+@keyframes txpulse { 50% { background: var(--title-b); } }
+
+.tx-bar { height: 16px; background: #fff; overflow: hidden;
+  border: 1px solid; border-color: var(--chrome-dark) var(--chrome-white) var(--chrome-white) var(--chrome-dark); }
+.tx-bar span { display: block; height: 100%; width: 36%; background: var(--title-a);
+  box-shadow: inset -2px 0 0 var(--title-b); animation: txbar 1.15s linear infinite; }
+@keyframes txbar { from { transform: translateX(-110%); } to { transform: translateX(290%); } }
+
+/* ---- Result: the emotional peak ---- */
+.result { display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.result__banner {
+  font-family: 'Pixelated MS Sans Serif', Arial, sans-serif; font-weight: 700;
+  letter-spacing: 4px; font-size: 22px; padding: 9px; color: #fff;
+  border: 1px solid var(--chrome-dark);
+}
+.result--win .result__banner {
+  background: linear-gradient(180deg, #ffe66a 0%, var(--bird) 45%, var(--bird-dark) 100%);
+  color: #3a2600; text-shadow: 0 1px 0 rgba(255,255,255,.5);
+}
+.result--tie .result__banner { background: linear-gradient(180deg, #d8d8d8, var(--chrome-dark)); color: #1a1a1a; }
+.result--loss .result__banner { background: linear-gradient(180deg, #6a6a6a, #444); }
+.result__bird { display: flex; justify-content: center; }
+.result__bird .pixelbird { width: 46px; height: 46px; filter: drop-shadow(2px 2px 0 rgba(0,0,0,.3)); }
+.result--win .result__bird .pixelbird { animation: bootflap .5s steps(2) infinite; }
+.result--loss .result__bird .pixelbird { filter: grayscale(1) opacity(.55); }
+.result__payout { font-family: 'Cascadia Mono', Consolas, monospace; font-size: 26px; font-weight: 700; margin: 0; }
+.result--win .result__payout { color: var(--pipe-dark); }
+.result--loss .result__payout { color: #b23a3a; }
+.result--tie .result__payout { color: #333; font-size: 18px; }
+.result__link { font-size: 12px; margin: 0; }
+
+.scoreboard {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  background: #000; color: var(--sky); padding: 8px 10px; border: 1px solid var(--chrome-dark);
+  box-shadow: inset 1px 1px 2px rgba(0,0,0,.8); font-family: 'Cascadia Mono', Consolas, monospace;
+}
+.scoreboard__side { display: flex; flex-direction: column; gap: 1px; min-width: 56px; }
+.scoreboard__num { font-size: 24px; font-weight: 700; line-height: 1; }
+.scoreboard__lab { font-size: 10px; letter-spacing: 1px; opacity: .75; }
+.scoreboard__side.is-win .scoreboard__num { color: var(--bird); }
+.scoreboard__dash { opacity: .45; font-size: 18px; }
+
+.fineprint { font-size: 12px; color: #333; }
+
+/* ---- Motion off ---- */
+@media (prefers-reduced-motion: reduce) {
+  .boot { display: none !important; }
+  .marquee__track { animation: none; padding-left: 0; white-space: normal; }
+  .desktop-icon .glyph { transition: none; }
+  .boot__panel .pixelbird,
+  .tx__head .pixelbird,
+  .result--win .result__bird .pixelbird,
+  .tx-step.is-active .tx-step__mark { animation: none; }
+  .tx-bar span { animation: none; width: 100%; transform: none; }
+}

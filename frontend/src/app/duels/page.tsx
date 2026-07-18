@@ -30,7 +30,7 @@ export default function DuelsPage() {
             {duels.map((d) => (
               <tr key={d.id}>
                 <td>⚔️ duel_{d.id}.exe<br /><small>{d.creator.slice(0, 8)}…{d.challengeTo ? ' · rematch' : ''}</small></td>
-                <td>{stakeLabel(d)}</td>
+                <td className="stake">{stakeLabel(d)}</td>
                 <td><Link href={`/duels/${d.id}`}><button>Open</button></Link></td>
               </tr>
             ))}

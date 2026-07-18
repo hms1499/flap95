@@ -6,6 +6,7 @@ import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
 import { Dialog95 } from '@/components/Dialog95';
 import { GameCanvas } from '@/components/GameCanvas';
+import { TxProgress } from '@/components/TxProgress';
 import { ESCROW_ADDRESS, STAKE_TOKENS, type StakeToken, stakeTiersWei, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 
@@ -93,35 +94,42 @@ function CreateDuel() {
     <>
       {phase === 'pick-stake' && (
         <Window title="NEWDUEL.EXE — pick your stake">
-          {challenge && <p>Rematch challenge vs {challenge.slice(0, 8)}…</p>}
-          <p style={{ margin: '4px 0' }}>Currency:</p>
-          <div className="row">
-            {STAKE_TOKENS.map((t) => (
-              <button
-                key={t.symbol}
-                onClick={() => setToken(t)}
-                style={{ flex: 1, fontWeight: t.symbol === token.symbol ? 'bold' : 'normal' }}
-                aria-pressed={t.symbol === token.symbol}
-              >
-                {t.symbol}
-              </button>
-            ))}
-          </div>
-          <p style={{ margin: '8px 0 4px' }}>Stake:</p>
-          <div className="row">
-            {stakeTiersWei(token).map((s) => (
-              <button key={s.toString()} onClick={() => start(s)} style={{ flex: 1 }}>
-                {formatUnits(s, token.decimals)} {token.symbol}
-              </button>
-            ))}
-          </div>
-          <p style={{ fontSize: 12 }}>Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
+          {challenge && <p className="fineprint">Rematch challenge vs <span className="mono">{challenge.slice(0, 8)}…</span></p>}
+          <fieldset>
+            <legend>Currency</legend>
+            <div className="row">
+              {STAKE_TOKENS.map((t) => (
+                <button
+                  key={t.symbol}
+                  onClick={() => setToken(t)}
+                  style={{ flex: 1, fontWeight: t.symbol === token.symbol ? 'bold' : 'normal' }}
+                  aria-pressed={t.symbol === token.symbol}
+                >
+                  {t.symbol}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <fieldset style={{ marginTop: 8 }}>
+            <legend>Stake — winner takes the pot</legend>
+            <div className="row">
+              {stakeTiersWei(token).map((s) => (
+                <button key={s.toString()} onClick={() => start(s)} style={{ flex: 1 }}>
+                  <span className="win">{formatUnits(s, token.decimals)}</span> {token.symbol}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <p className="fineprint">Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
         </Window>
       )}
       {(phase === 'approving' || phase === 'depositing' || phase === 'binding') && (
-        <Dialog95 title="Please wait…" open>
-          <p>⏳ {phase === 'approving' ? `Approving ${token.symbol}…` : phase === 'depositing' ? 'Depositing your stake…' : 'Confirming on-chain…'}</p>
-          <progress style={{ width: '100%' }} />
+        <Dialog95 title="Creating duel…" open>
+          <TxProgress
+            title={`Staking ${token.symbol}`}
+            steps={[`Approve ${token.symbol}`, 'Deposit your stake', 'Confirm on-chain']}
+            active={phase === 'approving' ? 0 : phase === 'depositing' ? 1 : 2}
+          />
         </Dialog95>
       )}
       {phase === 'playing' && duel && (
@@ -130,7 +138,9 @@ function CreateDuel() {
         </Window>
       )}
       {phase === 'submitting' && (
-        <Dialog95 title="Please wait…" open><p>⏳ Verifying your run…</p><progress style={{ width: '100%' }} /></Dialog95>
+        <Dialog95 title="Please wait…" open>
+          <TxProgress title="Verifying your run" steps={['Verify your run', 'Open the duel']} active={0} />
+        </Dialog95>
       )}
       {phase === 'done' && (
         <Dialog95 title="Duel is live" onClose={() => router.push('/duels')} open>

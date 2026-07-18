@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import '98.css';
 import './globals.css';
 import { Providers } from './providers';
+import { Shell } from '@/components/Shell';
 
 export const metadata: Metadata = {
   title: 'FLAP95.EXE',
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <Providers>{children}</Providers>
+        <Providers>
+          <Shell>{children}</Shell>
+        </Providers>
       </body>
     </html>
   );

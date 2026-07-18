@@ -6,6 +6,8 @@ import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
 import { Dialog95 } from '@/components/Dialog95';
 import { GameCanvas } from '@/components/GameCanvas';
+import { TxProgress } from '@/components/TxProgress';
+import { DuelResult } from '@/components/DuelResult';
 import { ESCROW_ADDRESS, duelEscrowAbi, erc20Abi, tokenByAddress } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 
@@ -95,7 +97,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       {phase === 'loading' && <Window title="DUEL.EXE"><p>Loading…</p></Window>}
       {phase === 'preview' && detail && (
         <Window title={`DUEL_${detail.id}.EXE`}>
-          <p>⚔️ Stake: <b>{stakeStr} {symbol}</b> · vs {detail.creator.slice(0, 8)}…</p>
+          <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{detail.creator.slice(0, 8)}…</span></p>
           <p style={{ fontSize: 12 }}>Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>
           {isConnected
             ? <button onClick={accept} style={{ width: '100%' }}>Accept duel — stake {stakeStr} {symbol}</button>
@@ -103,9 +105,12 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         </Window>
       )}
       {(phase === 'approving' || phase === 'accepting' || phase === 'binding') && (
-        <Dialog95 title="Please wait…" open>
-          <p>⏳ {phase === 'approving' ? `Approving ${symbol}…` : phase === 'accepting' ? 'Locking your stake…' : 'Confirming on-chain…'}</p>
-          <progress style={{ width: '100%' }} />
+        <Dialog95 title="Accepting duel…" open>
+          <TxProgress
+            title={`Staking ${symbol} to accept`}
+            steps={[`Approve ${symbol}`, 'Lock your stake', 'Confirm on-chain']}
+            active={phase === 'approving' ? 0 : phase === 'accepting' ? 1 : 2}
+          />
         </Dialog95>
       )}
       {phase === 'playing' && ghost && (
@@ -114,22 +119,22 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         </Window>
       )}
       {phase === 'submitting' && (
-        <Dialog95 title="Please wait…" open><p>⏳ Verifying and settling on-chain…</p><progress style={{ width: '100%' }} /></Dialog95>
+        <Dialog95 title="Settling duel…" open>
+          <TxProgress title="Verifying &amp; settling" steps={['Verify your run', 'Settle on-chain']} active={0} />
+        </Dialog95>
       )}
       {phase === 'result' && outcome && detail && (
         <Dialog95 title={iWon ? 'Victory' : tie ? 'Draw' : 'Defeat'} open>
-          <p>
-            {iWon && <>🏆 You won <b>{(Number(stakeStr) * 1.9).toFixed(2)} {symbol}</b>!</>}
-            {tie && <>🤝 Tie — both stakes refunded.</>}
-            {!iWon && !tie && <>⚠️ You lost <b>{stakeStr} {symbol}</b>.</>}
-          </p>
-          <p>You {outcome.acceptorScore} — {outcome.creatorScore} them.</p>
-          {outcome.settleTx && (
-            <p style={{ fontSize: 12 }}>
-              <a href={`https://celoscan.io/tx/${outcome.settleTx}`} target="_blank" rel="noreferrer">View settlement ↗</a>
-            </p>
-          )}
-          <div className="row spread">
+          <DuelResult
+            won={iWon}
+            tie={tie}
+            amount={iWon ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
+            symbol={symbol}
+            yourScore={outcome.acceptorScore}
+            theirScore={outcome.creatorScore}
+            settleTx={outcome.settleTx}
+          />
+          <div className="row spread" style={{ marginTop: 10 }}>
             {!iWon && !tie && (
               <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
             )}

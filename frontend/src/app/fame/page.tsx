@@ -14,7 +14,7 @@ export default function FamePage() {
           <thead><tr><th>#</th><th>Name</th><th>Score</th></tr></thead>
           <tbody>
             {scores.map((s, i) => (
-              <tr key={`${s.name}-${i}`}><td>{i + 1}</td><td>{s.name}</td><td>{s.score}</td></tr>
+              <tr key={`${s.name}-${i}`}><td>{i + 1}</td><td>{s.name}</td><td className="win">{s.score}</td></tr>
             ))}
             {scores.length === 0 && <tr><td colSpan={3}>No scores yet. Be the first.</td></tr>}
           </tbody>
