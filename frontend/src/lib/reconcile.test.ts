@@ -22,4 +22,46 @@ describe('planReconcileAction', () => {
   it('skips terminal statuses', () => {
     expect(planReconcileAction(row({ status: 'settled' }), NOW)).toBe('skip');
   });
+
+  it('does not forfeit when the acceptor did submit a run', () => {
+    expect(
+      planReconcileAction(
+        row({
+          updatedAt: new Date(NOW - FORFEIT_AFTER_MS - 60_000).toISOString(),
+          acceptorTaps: [1, 2, 3],
+        }),
+        NOW,
+      ),
+    ).toBe('skip');
+  });
+
+  it('forfeits exactly at the forfeit boundary (ageMs === FORFEIT_AFTER_MS)', () => {
+    expect(
+      planReconcileAction(row({ updatedAt: new Date(NOW - FORFEIT_AFTER_MS).toISOString() }), NOW),
+    ).toBe('forfeit');
+  });
+
+  it('skips one millisecond before the forfeit boundary (ageMs === FORFEIT_AFTER_MS - 1)', () => {
+    expect(
+      planReconcileAction(row({ updatedAt: new Date(NOW - (FORFEIT_AFTER_MS - 1)).toISOString() }), NOW),
+    ).toBe('skip');
+  });
+
+  it('alerts exactly at the stale boundary (ageMs === STALE_AFTER_MS)', () => {
+    expect(
+      planReconcileAction(
+        row({ status: 'settling', updatedAt: new Date(NOW - STALE_AFTER_MS).toISOString() }),
+        NOW,
+      ),
+    ).toBe('stale-alert');
+  });
+
+  it('retries one millisecond before the stale boundary (ageMs === STALE_AFTER_MS - 1)', () => {
+    expect(
+      planReconcileAction(
+        row({ status: 'settling', updatedAt: new Date(NOW - (STALE_AFTER_MS - 1)).toISOString() }),
+        NOW,
+      ),
+    ).toBe('retry');
+  });
 });
