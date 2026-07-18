@@ -74,23 +74,31 @@ export async function markAccepted(id: number, acceptor: string): Promise<void> 
     where id = ${id} and status = 'open'`;
 }
 
+// Returns false if the guard did not match (another actor already moved the row) —
+// the caller lost the race and must not proceed to relay on-chain.
 export async function markSettling(
   id: number, taps: number[], score: number, winner: 'creator' | 'acceptor' | 'tie',
-): Promise<void> {
-  await sql`update duels set acceptor_taps = ${JSON.stringify(taps)}::jsonb, acceptor_score = ${score},
+): Promise<boolean> {
+  const rows = await sql`update duels set acceptor_taps = ${JSON.stringify(taps)}::jsonb, acceptor_score = ${score},
     winner = ${winner}, status = 'settling', updated_at = now()
-    where id = ${id} and status = 'accepted'`;
+    where id = ${id} and status = 'accepted'
+    returning id`;
+  return rows.length > 0;
 }
 
-export async function markSettled(id: number, settleTx: string): Promise<void> {
-  await sql`update duels set settle_tx = ${settleTx}, status = 'settled', updated_at = now()
-    where id = ${id} and status in ('accepted', 'settling')`;
+// Returns false if the guard did not match (another actor already moved the row) —
+// the caller lost the race and must not proceed to relay on-chain.
+export async function markSettled(id: number, settleTx: string): Promise<boolean> {
+  const rows = await sql`update duels set settle_tx = ${settleTx}, status = 'settled', updated_at = now()
+    where id = ${id} and status in ('accepted', 'settling')
+    returning id`;
+  return rows.length > 0;
 }
 
 export async function listReconcileCandidates(): Promise<DuelRow[]> {
   const rows = await sql`
     select * from duels
-    where status = 'settling'
+    where (status = 'settling' and updated_at < now() - interval '5 minutes')
        or (status = 'accepted' and updated_at < now() - interval '30 minutes')
     order by updated_at asc limit 100`;
   return rows.map(toRow);
