@@ -43,6 +43,8 @@ export const duelEscrowAbi = [
     ], outputs: [] },
   { type: 'function', name: 'cancelExpired', stateMutability: 'nonpayable',
     inputs: [{ name: 'id', type: 'uint256' }], outputs: [] },
+  { type: 'function', name: 'refundStale', stateMutability: 'nonpayable',
+    inputs: [{ name: 'id', type: 'uint256' }], outputs: [] },
   { type: 'event', name: 'DuelCreated', inputs: [
       { name: 'id', type: 'uint256', indexed: true },
       { name: 'creator', type: 'address', indexed: true },
@@ -56,6 +58,10 @@ export const duelEscrowAbi = [
       { name: 'winner', type: 'address', indexed: false },
       { name: 'scoreA', type: 'uint32', indexed: false },
       { name: 'scoreB', type: 'uint32', indexed: false }] },
+  { type: 'event', name: 'DuelCancelled', inputs: [
+      { name: 'id', type: 'uint256', indexed: true }] },
+  { type: 'event', name: 'DuelRefunded', inputs: [
+      { name: 'id', type: 'uint256', indexed: true }] },
 ] as const;
 
 export const erc20Abi = [
