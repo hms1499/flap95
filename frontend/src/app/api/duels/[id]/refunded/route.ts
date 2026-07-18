@@ -21,7 +21,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ id: d.id, action: 'skip-no-onchain-id' });
   }
 
-  if (d.status !== 'accepted' && d.status !== 'settling') {
+  if (
+    d.status !== 'funded' &&
+    d.status !== 'open' &&
+    d.status !== 'accepted' &&
+    d.status !== 'settling'
+  ) {
     return NextResponse.json({ id: d.id, action: 'already-terminal' });
   }
 

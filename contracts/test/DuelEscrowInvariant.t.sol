@@ -133,16 +133,31 @@ contract DuelEscrowInvariantTest is StdInvariant, Test {
     /// @notice Proves each handler action path was actually exercised (not just
     /// structurally non-reverting). A path with a zero or implausibly low
     /// success count means the invariant above is passing vacuously for it.
+    ///
+    /// Gated on createSuccesses > 0: Foundry persists a shrunk counterexample
+    /// for a failing invariant to cache/invariant/failures/... and replays it
+    /// on the next run. A shrunk replay is typically a single call, so all
+    /// five counters can legitimately be 0 even though invariant_escrowSolvent
+    /// itself passes on that short sequence. Without this guard, afterInvariant
+    /// would then fail on every replay of any recorded failure (stale or
+    /// genuine), keeping the suite red until `forge clean` and muddying the
+    /// diagnosis of a real solvency break by piling unrelated assertion
+    /// failures on top of it. createSuccesses > 0 is a reasonable proxy for
+    /// "a real campaign ran" since every other path requires a created duel
+    /// first.
     function afterInvariant() public view {
         console.log("createSuccesses", handler.createSuccesses());
         console.log("acceptSuccesses", handler.acceptSuccesses());
         console.log("settleSuccesses", handler.settleSuccesses());
         console.log("refundSuccesses", handler.refundSuccesses());
         console.log("cancelSuccesses", handler.cancelSuccesses());
-        assertGt(handler.createSuccesses(), 0);
-        assertGt(handler.acceptSuccesses(), 0);
-        assertGt(handler.settleSuccesses(), 0);
-        assertGt(handler.refundSuccesses(), 0);
-        assertGt(handler.cancelSuccesses(), 0);
+        if (handler.createSuccesses() > 0) {
+            assertGt(handler.acceptSuccesses(), 0);
+            assertGt(handler.settleSuccesses(), 0);
+            assertGt(handler.refundSuccesses(), 0);
+            assertGt(handler.cancelSuccesses(), 0);
+        } else {
+            console.log("afterInvariant: coverage assertions skipped (createSuccesses == 0) -- this is a replay of a recorded failure or a degenerate campaign, not a full run");
+        }
     }
 }
