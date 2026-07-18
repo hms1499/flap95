@@ -54,7 +54,7 @@ contract DuelEscrowTest is Test {
         uint256 id = _create(usdm, 0.1e18);
         assertEq(id, 1);
         assertEq(usdm.balanceOf(address(escrow)), 0.1e18);
-        (address creator,, uint96 stake,, DuelEscrow.Status status, IERC20 token) = escrow.duels(id);
+        (address creator,, uint96 stake,, DuelEscrow.Status status, IERC20 token,) = escrow.duels(id);
         assertEq(creator, alice);
         assertEq(stake, 0.1e18);
         assertEq(uint8(status), uint8(DuelEscrow.Status.Open));
@@ -64,7 +64,7 @@ contract DuelEscrowTest is Test {
     function test_createDuel_sixDecimalTiers() public {
         uint256 id = _create(usdc, 0.1e6);
         assertEq(usdc.balanceOf(address(escrow)), 0.1e6);
-        (,, uint96 stake,,, IERC20 token) = escrow.duels(id);
+        (,, uint96 stake,,, IERC20 token,) = escrow.duels(id);
         assertEq(stake, 0.1e6);
         assertEq(address(token), address(usdc));
     }
@@ -109,7 +109,7 @@ contract DuelEscrowTest is Test {
         uint256 id = _create(usdm, 0.5e18);
         vm.prank(bob); escrow.acceptDuel(id);
         assertEq(usdm.balanceOf(address(escrow)), 1e18);
-        (, address acceptor,,, DuelEscrow.Status status,) = escrow.duels(id);
+        (, address acceptor,,, DuelEscrow.Status status,,) = escrow.duels(id);
         assertEq(acceptor, bob);
         assertEq(uint8(status), uint8(DuelEscrow.Status.Accepted));
     }
@@ -142,7 +142,7 @@ contract DuelEscrowTest is Test {
         vm.warp(block.timestamp + 24 hours + 1);
         escrow.cancelExpired(id);
         assertEq(usdm.balanceOf(alice), 100e18);
-        (,,,, DuelEscrow.Status status,) = escrow.duels(id);
+        (,,,, DuelEscrow.Status status,,) = escrow.duels(id);
         assertEq(uint8(status), uint8(DuelEscrow.Status.Cancelled));
     }
 
@@ -167,7 +167,7 @@ contract DuelEscrowTest is Test {
         escrow.settle(id, bob, 3, 7, _sign(id, bob, 3, 7));
         assertEq(usdm.balanceOf(bob), 99e18 + 1.9e18);      // staked 1, won 1.9
         assertEq(usdm.balanceOf(treasury), 0.1e18);          // 5% of 2.0
-        (,,,, DuelEscrow.Status status,) = escrow.duels(id);
+        (,,,, DuelEscrow.Status status,,) = escrow.duels(id);
         assertEq(uint8(status), uint8(DuelEscrow.Status.Settled));
     }
 
@@ -232,5 +232,48 @@ contract DuelEscrowTest is Test {
     function testFuzz_settle_conservesFunds(uint32 a, uint32 b, bool useUsdc) public {
         if (useUsdc) _settleAndCheckConservation(usdc, 1e6, 200e6, a, b);
         else _settleAndCheckConservation(usdm, 1e18, 200e18, a, b);
+    }
+
+    function test_acceptDuel_recordsAcceptedAt() public {
+        uint256 id = _create(usdm, 1e18);
+        vm.warp(block.timestamp + 100);
+        uint256 t = block.timestamp;
+        vm.prank(bob); escrow.acceptDuel(id);
+        (,,,,,, uint40 acceptedAt) = escrow.duels(id);
+        assertEq(uint256(acceptedAt), t);
+    }
+
+    function test_refundStale_refundsBothAfterTimeout() public {
+        uint256 id = _acceptedDuel(usdm, 1e18);
+        vm.warp(block.timestamp + escrow.SETTLE_TIMEOUT() + 1);
+        vm.expectEmit(true, false, false, false);
+        emit DuelEscrow.DuelRefunded(id);
+        escrow.refundStale(id);
+        assertEq(usdm.balanceOf(alice), 100e18);
+        assertEq(usdm.balanceOf(bob), 100e18);
+        assertEq(usdm.balanceOf(address(escrow)), 0);
+        (,,,, DuelEscrow.Status status,,) = escrow.duels(id);
+        assertEq(uint8(status), uint8(DuelEscrow.Status.Cancelled));
+    }
+
+    function test_refundStale_rejectsBeforeTimeout() public {
+        uint256 id = _acceptedDuel(usdm, 1e18);
+        vm.expectRevert(DuelEscrow.NotExpired.selector);
+        escrow.refundStale(id);
+    }
+
+    function test_refundStale_rejectsOpenDuel() public {
+        uint256 id = _create(usdm, 1e18);
+        vm.warp(block.timestamp + escrow.SETTLE_TIMEOUT() + 1);
+        vm.expectRevert(DuelEscrow.WrongStatus.selector);
+        escrow.refundStale(id);
+    }
+
+    function test_refundStale_rejectsDoubleCall() public {
+        uint256 id = _acceptedDuel(usdm, 1e18);
+        vm.warp(block.timestamp + escrow.SETTLE_TIMEOUT() + 1);
+        escrow.refundStale(id);
+        vm.expectRevert(DuelEscrow.WrongStatus.selector);
+        escrow.refundStale(id);
     }
 }

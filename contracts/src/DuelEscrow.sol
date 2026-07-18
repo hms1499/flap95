@@ -22,11 +22,13 @@ contract DuelEscrow is Ownable, EIP712 {
         uint40 createdAt;
         Status status;
         IERC20 token;
+        uint40 acceptedAt;
     }
 
     bytes32 public constant SETTLE_TYPEHASH =
         keccak256("Settle(uint256 duelId,address winner,uint32 scoreA,uint32 scoreB)");
     uint256 public constant EXPIRY = 24 hours;
+    uint256 public constant SETTLE_TIMEOUT = 24 hours;
     uint256 public constant FEE_BPS = 500; // 5%
 
     address public oracle;
@@ -39,6 +41,7 @@ contract DuelEscrow is Ownable, EIP712 {
     event DuelAccepted(uint256 indexed id, address indexed acceptor);
     event DuelSettled(uint256 indexed id, address winner, uint32 scoreA, uint32 scoreB);
     event DuelCancelled(uint256 indexed id);
+    event DuelRefunded(uint256 indexed id);
     event TokenSet(address indexed token, bool allowed);
 
     error InvalidStake();
@@ -67,7 +70,7 @@ contract DuelEscrow is Ownable, EIP712 {
         uint256 unit = 10 ** IERC20Metadata(address(token)).decimals();
         if (stake != unit / 10 && stake != unit / 2 && stake != unit) revert InvalidStake();
         id = ++nextId;
-        duels[id] = Duel(msg.sender, address(0), stake, uint40(block.timestamp), Status.Open, token);
+        duels[id] = Duel(msg.sender, address(0), stake, uint40(block.timestamp), Status.Open, token, 0);
         token.safeTransferFrom(msg.sender, address(this), stake);
         emit DuelCreated(id, msg.sender, stake, address(token));
     }
@@ -78,6 +81,7 @@ contract DuelEscrow is Ownable, EIP712 {
         if (msg.sender == d.creator) revert SelfAccept();
         d.acceptor = msg.sender;
         d.status = Status.Accepted;
+        d.acceptedAt = uint40(block.timestamp);
         d.token.safeTransferFrom(msg.sender, address(this), d.stake);
         emit DuelAccepted(id, msg.sender);
     }
@@ -113,6 +117,16 @@ contract DuelEscrow is Ownable, EIP712 {
         d.status = Status.Cancelled;
         d.token.safeTransfer(d.creator, d.stake);
         emit DuelCancelled(id);
+    }
+
+    function refundStale(uint256 id) external {
+        Duel storage d = duels[id];
+        if (d.status != Status.Accepted) revert WrongStatus();
+        if (block.timestamp <= d.acceptedAt + SETTLE_TIMEOUT) revert NotExpired();
+        d.status = Status.Cancelled;
+        d.token.safeTransfer(d.creator, d.stake);
+        d.token.safeTransfer(d.acceptor, d.stake);
+        emit DuelRefunded(id);
     }
 
     function setToken(address token, bool allowed) external onlyOwner {
