@@ -11,9 +11,9 @@ import { DuelResult } from '@/components/DuelResult';
 import { ESCROW_ADDRESS, duelEscrowAbi, erc20Abi, tokenByAddress } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 
-type Phase = 'loading' | 'preview' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
+type Phase = 'loading' | 'preview' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
-interface Detail { id: number; onchainId: string; status: string; stakeWei: string; token: string | null; creator: string }
+interface Detail { id: number; onchainId: string; status: string; stakeWei: string; token: string | null; creator: string; acceptor: string | null; updatedAt: string }
 interface Outcome { winner: 'creator' | 'acceptor' | 'tie'; creatorScore: number; acceptorScore: number; settleTx: string | null }
 
 export default function DuelPage({ params }: { params: Promise<{ id: string }> }) {
@@ -33,8 +33,12 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   useEffect(() => {
     fetch(`/api/duels/${id}`).then((r) => r.json()).then((d) => {
       setDetail(d);
-      setPhase(d.status === 'open' ? 'preview' : 'error');
-      if (d.status !== 'open') setError('This duel is not open.');
+      if (d.status === 'open') { setPhase('preview'); return; }
+      const stale = (d.status === 'accepted' || d.status === 'settling')
+        && Date.now() - Date.parse(d.updatedAt) > 24 * 60 * 60 * 1000;
+      if (stale) { setPhase('reclaim'); return; }
+      setPhase('error');
+      setError('This duel is not open.');
     });
   }, [id]);
 
@@ -71,6 +75,22 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       setPhase('playing');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong');
+      setPhase('error');
+    }
+  }
+
+  async function reclaim() {
+    if (!detail?.onchainId) return;
+    try {
+      setPhase('reclaiming');
+      const tx = await writeContractAsync({
+        address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'refundStale',
+        args: [BigInt(detail.onchainId)], ...feeCurrencyOverrides(),
+      });
+      await publicClient!.waitForTransactionReceipt({ hash: tx });
+      router.push('/duels');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Reclaim failed');
       setPhase('error');
     }
   }
@@ -140,6 +160,20 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
             )}
             <button onClick={() => router.push('/duels')}>Close</button>
           </div>
+        </Dialog95>
+      )}
+      {phase === 'reclaim' && detail && (
+        <Window title={`DUEL_${detail.id}.EXE — stuck`}>
+          <p>⚠️ This duel was accepted but never settled for over 24 hours.</p>
+          <p style={{ fontSize: 12 }}>You can reclaim your <span className="stake">{stakeStr} {symbol}</span> stake. Both players are refunded.</p>
+          {isConnected
+            ? <button onClick={reclaim} style={{ width: '100%' }}>Reclaim stake</button>
+            : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
+        </Window>
+      )}
+      {phase === 'reclaiming' && (
+        <Dialog95 title="Reclaiming…" open>
+          <TxProgress title="Refunding both stakes" steps={['Confirm on-chain']} active={0} />
         </Dialog95>
       )}
       {phase === 'error' && (

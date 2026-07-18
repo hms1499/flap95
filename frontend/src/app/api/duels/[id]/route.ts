@@ -9,6 +9,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return NextResponse.json({
     id: d.id, onchainId: d.onchainId, status: d.status, stakeWei: d.stakeWei, token: d.token,
     creator: d.creator, acceptor: d.acceptor, challengeTo: d.challengeTo,
+    updatedAt: d.updatedAt,
     creatorScore: settled ? d.creatorScore : null,
     acceptorScore: settled ? d.acceptorScore : null,
     winner: settled ? d.winner : null,
