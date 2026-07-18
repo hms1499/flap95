@@ -1,6 +1,6 @@
 import { sql } from './db';
 
-export type DuelStatus = 'draft' | 'funded' | 'open' | 'accepted' | 'settled' | 'cancelled';
+export type DuelStatus = 'draft' | 'funded' | 'open' | 'accepted' | 'settling' | 'settled' | 'cancelled';
 
 export interface DuelRow {
   id: number;
@@ -19,6 +19,7 @@ export interface DuelRow {
   winner: 'creator' | 'acceptor' | 'tie' | null;
   settleTx: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 function toRow(r: Record<string, unknown>): DuelRow {
@@ -39,6 +40,7 @@ function toRow(r: Record<string, unknown>): DuelRow {
     winner: r.winner as DuelRow['winner'],
     settleTx: r.settle_tx as string | null,
     createdAt: String(r.created_at),
+    updatedAt: String(r.updated_at ?? r.created_at),
   };
 }
 
@@ -72,13 +74,26 @@ export async function markAccepted(id: number, acceptor: string): Promise<void> 
     where id = ${id} and status = 'open'`;
 }
 
-export async function setAcceptorResult(
-  id: number, taps: number[], score: number,
-  winner: 'creator' | 'acceptor' | 'tie', settleTx: string | null,
+export async function markSettling(
+  id: number, taps: number[], score: number, winner: 'creator' | 'acceptor' | 'tie',
 ): Promise<void> {
   await sql`update duels set acceptor_taps = ${JSON.stringify(taps)}::jsonb, acceptor_score = ${score},
-    winner = ${winner}, settle_tx = ${settleTx}, status = 'settled', updated_at = now()
+    winner = ${winner}, status = 'settling', updated_at = now()
     where id = ${id} and status = 'accepted'`;
+}
+
+export async function markSettled(id: number, settleTx: string): Promise<void> {
+  await sql`update duels set settle_tx = ${settleTx}, status = 'settled', updated_at = now()
+    where id = ${id} and status in ('accepted', 'settling')`;
+}
+
+export async function listReconcileCandidates(): Promise<DuelRow[]> {
+  const rows = await sql`
+    select * from duels
+    where status = 'settling'
+       or (status = 'accepted' and updated_at < now() - interval '30 minutes')
+    order by updated_at asc limit 100`;
+  return rows.map(toRow);
 }
 
 export async function listOpenDuels(viewer?: string): Promise<DuelRow[]> {

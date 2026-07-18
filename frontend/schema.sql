@@ -18,6 +18,7 @@ create table if not exists duels (
   updated_at timestamptz not null default now()
 );
 create index if not exists duels_status_idx on duels (status);
+create index if not exists duels_status_updated_idx on duels (status, updated_at);
 
 create table if not exists practice_scores (
   id serial primary key,
