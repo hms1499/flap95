@@ -13,6 +13,10 @@ function oracleAccount() {
   return privateKeyToAccount(process.env.ORACLE_PRIVATE_KEY as Hex);
 }
 
+export function oracleAddress(): Address {
+  return oracleAccount().address;
+}
+
 const settleTypes = {
   Settle: [
     { name: 'duelId', type: 'uint256' },
