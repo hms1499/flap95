@@ -8,6 +8,23 @@ import { listReconcileCandidates, markSettling, markSettled, markChainResolved, 
 import { planReconcileAction } from '@/lib/reconcile';
 
 export const dynamic = 'force-dynamic';
+
+// HOW THIS IS SCHEDULED
+// ---------------------
+// By an EXTERNAL scheduler, not Vercel Cron. This project is on a Vercel Hobby plan, which
+// caps cron jobs at once per day; a stuck duel waiting up to 24h for a forfeit or a relay
+// retry is not acceptable for a contract holding real stakes, so the repo deliberately ships
+// no vercel.json `crons` entry (one existed and was removed — re-adding it on Hobby fails the
+// production deploy outright, at build time).
+//
+// Whatever drives it must send `Authorization: Bearer $CRON_SECRET` and call this route every
+// ~10 minutes. The auth block below fails closed in production, so an unset or wrong secret
+// gets a 401 and nothing reconciles — if duels stop settling, check the secret first.
+//
+// The cadence is not arbitrary: listReconcileCandidates re-examines a 'settling' row after 5
+// minutes and an 'accepted' one after 30, and gives up entirely at 48 hours. A scheduler much
+// slower than ~10 minutes eats into that budget; much faster mostly burns RPC calls.
+
 // Sequential on-chain relays run per invocation — give this route real headroom, and pair
 // it with the wall-clock budget below so we bail out safely before the platform kills the
 // invocation outright. relaySettle awaits each receipt (so a revert reads as failure), which
