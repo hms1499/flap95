@@ -1,5 +1,5 @@
 'use client';
-import { use, useCallback, useEffect, useState } from 'react';
+import { use, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useConnect, usePublicClient, useWriteContract } from 'wagmi';
 import { formatUnits } from 'viem';
@@ -44,6 +44,17 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   const [reclaimKind, setReclaimKind] = useState<ReclaimKind | null>(null);
   const [error, setError] = useState('');
 
+  // Held in a ref rather than named as an effect dependency. The loader below must run
+  // exactly once per duel id: it owns `phase`, and re-running it mid-flight resets that out
+  // from under whatever the user is doing. wagmi returns a NEW client object whenever the
+  // connected chain changes, so listing it as a dependency meant a network switch during a
+  // run discarded the run, and during accept() discarded a stake the user had already paid
+  // to approve.
+  const publicClientRef = useRef(publicClient);
+  // Declared before the loader effect so it syncs first on mount; the loader also awaits a
+  // fetch before reading the ref, so it always sees the current client either way.
+  useEffect(() => { publicClientRef.current = publicClient; }, [publicClient]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -57,7 +68,10 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       // the contract what state it's really in and offer the hatch that actually applies.
       const terminal = d.status === 'settled' || d.status === 'cancelled';
       const ageMs = Date.now() - Date.parse(d.updatedAt);
-      const maybeStale = !terminal && ageMs > EXPIRY_MS;
+      // A NaN age (unparseable timestamp) counts as stale on purpose: it routes to the chain
+      // read below, which is authoritative and needs no timestamp from us. Letting NaN fall
+      // through the `>` instead would silently answer "not stale" and hide the escape hatch.
+      const maybeStale = !terminal && (Number.isNaN(ageMs) || ageMs > EXPIRY_MS);
 
       if (!maybeStale) {
         // Fast path: a live duel still inside its window needs no chain read.
@@ -67,35 +81,48 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         return;
       }
 
-      if (d.onchainId && publicClient) {
-        try {
-          const oc = await publicClient.readContract({
-            address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'duels',
-            args: [BigInt(d.onchainId)],
-          });
-          if (cancelled) return;
-          const [, , , createdAt, onchainStatus, , acceptedAt] = oc;
-          const nowSec = Math.floor(Date.now() / 1000);
-          // Both contract checks are strict `>` (they revert on `<=`), so mirror that
-          // exactly — offering a button that reverts is worse than not offering it.
-          if (onchainStatus === 2 && nowSec > Number(acceptedAt) + EXPIRY_SEC) {
-            setReclaimKind('refundStale'); setPhase('reclaim'); return;
-          }
-          if (onchainStatus === 1 && nowSec > Number(createdAt) + EXPIRY_SEC) {
-            setReclaimKind('cancelExpired'); setPhase('reclaim'); return;
-          }
-        } catch (e) {
-          console.error('on-chain status read failed', e);
-        }
-        if (cancelled) return;
+      // Past this point the DB row is old enough that it may no longer describe the chain, so
+      // the chain decides — including whether the duel is still acceptable. Falling back to
+      // the DB status here used to offer an Accept button on an expired duel, and acceptDuel
+      // reverts once block.timestamp passes createdAt + EXPIRY. The user only discovers that
+      // after paying for the ERC-20 approve that accept() sends first.
+      const client = publicClientRef.current;
+      if (!d.onchainId || !client) {
+        setPhase('error');
+        setError('This duel has expired and its on-chain state could not be checked. Reload to try again.');
+        return;
       }
 
-      if (d.status === 'open') { setPhase('preview'); return; }
-      setPhase('error');
-      setError('This duel is not open.');
+      try {
+        const oc = await client.readContract({
+          address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'duels',
+          args: [BigInt(d.onchainId)],
+        });
+        if (cancelled) return;
+        const [, , , createdAt, onchainStatus, , acceptedAt] = oc;
+        const nowSec = Math.floor(Date.now() / 1000);
+        // Both contract checks are strict `>` (they revert on `<=`), so mirror that
+        // exactly — offering a button that reverts is worse than not offering it.
+        if (onchainStatus === 2 && nowSec > Number(acceptedAt) + EXPIRY_SEC) {
+          setReclaimKind('refundStale'); setPhase('reclaim'); return;
+        }
+        if (onchainStatus === 1 && nowSec > Number(createdAt) + EXPIRY_SEC) {
+          setReclaimKind('cancelExpired'); setPhase('reclaim'); return;
+        }
+        // Still Open and not yet expired — the row's updated_at ran ahead of the chain (a
+        // sync bumped it), so the duel really is joinable.
+        if (onchainStatus === 1) { setPhase('preview'); return; }
+        setPhase('error');
+        setError('This duel is not open.');
+      } catch (e) {
+        if (cancelled) return;
+        console.error('on-chain status read failed', e);
+        setPhase('error');
+        setError('Could not reach the network to check this duel. Reload to try again.');
+      }
     })();
     return () => { cancelled = true; };
-  }, [id, publicClient]);
+  }, [id]);
 
   async function accept() {
     if (!detail || !address || !publicClient || !detail.onchainId) return;
