@@ -77,7 +77,16 @@ async function run(req: Request) {
   }
 
   const startedAt = Date.now();
-  const results: { id: number; action: string; settleTx?: string | null; onchainStatus?: number }[] = [];
+  // `changed` records whether THIS RUN moved the row. It is set from the return value of the
+  // write that moved it, never inferred from the action name: a guarded UPDATE can match zero
+  // rows and a relay can fail, both of which leave the row exactly as it was. This is the
+  // signal that tells a jammed queue (rows examined every run, none of them movable) apart
+  // from a healthy idle one, so it has to mean what it says. Where a row moved but another
+  // actor moved it (skip-lost-race), this run gets no credit — under-reporting is the safe
+  // direction for a health metric.
+  const results: {
+    id: number; action: string; changed: boolean; settleTx?: string | null; onchainStatus?: number;
+  }[] = [];
   const candidates = await listReconcileCandidates();
   let remaining = 0;
 
@@ -94,7 +103,7 @@ async function run(req: Request) {
     let settleTx: string | null = null;
     let action: string = 'pre-flight';
     try {
-      if (!d.onchainId) { results.push({ id: d.id, action: 'skip-no-onchain-id' }); continue; }
+      if (!d.onchainId) { results.push({ id: d.id, action: 'skip-no-onchain-id', changed: false }); continue; }
 
       // Authoritative pre-flight: the DB row can diverge from chain truth for any reason
       // (reclaim via refundStale being the motivating case, but not the only one). Read
@@ -116,8 +125,8 @@ async function run(req: Request) {
       // never relay.
       if (onchainStatus === 3 || onchainStatus === 4) {
         action = 'skip-chain-resolved';
-        await markChainResolved(d.id, onchainStatus);
-        results.push({ id: d.id, action, onchainStatus });
+        const changed = await markChainResolved(d.id, onchainStatus);
+        results.push({ id: d.id, action, changed, onchainStatus });
         continue;
       }
       // Open — nobody ever accepted, so there is nothing to settle and only the creator's
@@ -126,8 +135,8 @@ async function run(req: Request) {
       // their own money. The creator reclaims it themselves from the duel page.
       if (onchainStatus === 1) {
         action = 'chain-open-unaccepted';
-        await markChainResolved(d.id, onchainStatus);
-        results.push({ id: d.id, action, onchainStatus });
+        const changed = await markChainResolved(d.id, onchainStatus);
+        results.push({ id: d.id, action, changed, onchainStatus });
         continue;
       }
       // None — no such duel on-chain (bad onchain_id, or a create that never landed).
@@ -135,7 +144,7 @@ async function run(req: Request) {
       if (onchainStatus !== 2) {
         action = 'skip-chain-none';
         console.warn(`[reconcile] duel ${d.id} has no on-chain record (status ${onchainStatus})`);
-        results.push({ id: d.id, action, onchainStatus });
+        results.push({ id: d.id, action, changed: false, onchainStatus });
         continue;
       }
 
@@ -148,7 +157,9 @@ async function run(req: Request) {
       if (d.status === 'open' || d.status === 'funded') {
         action = 'chain-accepted-sync';
         const synced = await markChainResolved(d.id, onchainStatus, { acceptor: onchainDuel[1] });
-        results.push({ id: d.id, action: synced ? action : `${action}-noop`, onchainStatus });
+        results.push({
+          id: d.id, action: synced ? action : `${action}-noop`, changed: synced, onchainStatus,
+        });
         continue;
       }
 
@@ -156,13 +167,13 @@ async function run(req: Request) {
       action = planReconcileAction(d, startedAt);
       // Recorded rather than silently dropped so `processed` reflects rows examined, not
       // just rows acted on.
-      if (action === 'skip') { results.push({ id: d.id, action, onchainStatus }); continue; }
+      if (action === 'skip') { results.push({ id: d.id, action, changed: false, onchainStatus }); continue; }
       if (action === 'stale-alert') {
         console.warn(`[reconcile] duel ${d.id} stuck >24h — refundStale is available on-chain`);
-        results.push({ id: d.id, action, onchainStatus });
+        results.push({ id: d.id, action, changed: false, onchainStatus });
         continue;
       }
-      if (d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete' }); continue; }
+      if (d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete', changed: false }); continue; }
 
       // Both remaining actions broadcast a settle() and then block for up to
       // RELAY_RECEIPT_TIMEOUT_MS waiting on its receipt. The top-of-loop budget check can
@@ -181,7 +192,7 @@ async function run(req: Request) {
         // the race and moved the row — we must not also relay settle() for it.
         const gotSettling = await markSettling(d.id, [], 0, 'creator');
         if (!gotSettling) {
-          results.push({ id: d.id, action: 'skip-lost-race' });
+          results.push({ id: d.id, action: 'skip-lost-race', changed: false });
           continue;
         }
       }
@@ -195,7 +206,7 @@ async function run(req: Request) {
         // silently route the full pot. There is no reachable path to this today (retry
         // implies status='settling', and markSettling always sets a non-null winner), but
         // this guard exists so a future change can't turn that invariant into a money bug.
-        results.push({ id: d.id, action: 'skip-no-winner' });
+        results.push({ id: d.id, action: 'skip-no-winner', changed: false });
         continue;
       }
       const scoreB = action === 'forfeit' ? 0 : (d.acceptorScore ?? 0);
@@ -206,7 +217,7 @@ async function run(req: Request) {
           console.error('markSettled failed after successful relay', { duelId: d.id, settleTx });
         }
       }
-      results.push({ id: d.id, action, settleTx });
+      results.push({ id: d.id, action, changed: settleTx !== null, settleTx });
     } catch (err) {
       // One bad row must never abort the run — a failed row's updated_at never changes, so
       // an uncaught throw here would make it first-in-line on every subsequent run
@@ -214,14 +225,16 @@ async function run(req: Request) {
       // from markSettled, settleTx (captured above) preserves the hash so a human can
       // reconcile the real on-chain settlement manually instead of it being silently lost.
       console.error('[reconcile] duel failed, skipping', { duelId: d.id, action, settleTx, err });
-      results.push({ id: d.id, action: `error:${action}`, settleTx });
+      results.push({ id: d.id, action: `error:${action}`, changed: settleTx !== null, settleTx });
     }
   }
 
-  // `processed` counts every row examined (skips included), so it can no longer undercount
-  // the work the run actually did; `acted` is the subset that changed something on-chain
-  // or in the DB.
-  const acted = results.filter((r) => !r.action.startsWith('skip')).length;
+  // `processed` counts every row examined (skips included); `acted` is the subset this run
+  // actually moved. Deriving `acted` from the action name instead counted stale-alert (which
+  // only logs), a no-op chain sync, and even an outright error as work done — exactly
+  // backwards, since those are the outcomes that signal the queue is filling with rows
+  // nothing can move. processed high with acted at zero, run after run, is that alarm.
+  const acted = results.filter((r) => r.changed).length;
   return NextResponse.json({
     processed: results.length, acted, results, remaining,
     oracle: {

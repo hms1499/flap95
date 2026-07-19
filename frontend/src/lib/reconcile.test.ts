@@ -64,4 +64,22 @@ describe('planReconcileAction', () => {
       ),
     ).toBe('retry');
   });
+
+  // An unparseable timestamp yields NaN, and every age comparison in the planner is `>=`,
+  // which answers false for NaN. Without an explicit guard a corrupt row silently takes the
+  // fallthrough branch — 'retry' for a settling row, i.e. re-broadcasting a settle for a duel
+  // whose age we could not establish. These must refuse instead.
+  // Note: Date.prototype.toString() output ("Sat Jul 18 2026 12:00:00 GMT+0000") is NOT in
+  // this list — V8 parses it fine. The spec leaves that format implementation-defined, which
+  // is why toIso normalises to ISO 8601, but it is not a NaN source on this engine.
+  for (const bad of ['', 'not a date', 'NaN', '0000-13-45']) {
+    it(`skips a settling row rather than retrying it when updatedAt is unparseable (${JSON.stringify(bad)})`, () => {
+      expect(Number.isNaN(Date.parse(bad))).toBe(true); // the premise: this really is unparseable
+      expect(planReconcileAction(row({ status: 'settling', updatedAt: bad }), NOW)).toBe('skip');
+    });
+  }
+
+  it('skips an accepted row with an unparseable updatedAt rather than forfeiting it', () => {
+    expect(planReconcileAction(row({ status: 'accepted', updatedAt: 'not a date' }), NOW)).toBe('skip');
+  });
 });
