@@ -117,7 +117,12 @@ export async function markSettled(id: number, settleTx: string): Promise<boolean
 // Settled duel may already carry a legitimate hash.
 // Returns false if the guard did not match (row already in the target state, or in a more
 // advanced one) or the on-chain status doesn't map to a DB state (None; logged and no-op).
-export async function markChainResolved(id: number, onchainStatus: number, settleTx?: string): Promise<boolean> {
+export async function markChainResolved(
+  id: number,
+  onchainStatus: number,
+  opts: { settleTx?: string; acceptor?: string } = {},
+): Promise<boolean> {
+  const { settleTx, acceptor } = opts;
   // Cancelled — reachable from any non-terminal state (refundStale from Accepted,
   // cancelExpired from Open).
   if (onchainStatus === 4) {
@@ -136,8 +141,17 @@ export async function markChainResolved(id: number, onchainStatus: number, settl
   }
   // Accepted — the acceptDuel tx landed but POST /accept died before markAccepted. Only
   // rows that haven't advanced past 'open' may move here; never pull back a settling row.
+  // The acceptor address is required, not optional: only the chain knows who accepted, and
+  // a row sitting at 'accepted' with a null acceptor is worse than one left at 'open' — an
+  // acceptor win would resolve to a null payee and be dropped as 'skip-no-winner' forever.
+  // Refuse loudly rather than write a half-synced row.
   if (onchainStatus === 2) {
-    const rows = await sql`update duels set status = 'accepted', updated_at = now()
+    if (!acceptor) {
+      console.warn(`[duelStore] markChainResolved: duel ${id} -> accepted needs the on-chain acceptor — no-op`);
+      return false;
+    }
+    const rows = await sql`update duels set status = 'accepted', acceptor = ${acceptor.toLowerCase()},
+      updated_at = now()
       where id = ${id} and status in ('funded', 'open')
       returning id`;
     return rows.length > 0;
@@ -154,12 +168,34 @@ export async function markChainResolved(id: number, onchainStatus: number, settl
   return false;
 }
 
+// GIVE_UP_AFTER (the outer 48h floor) is what keeps this queue bounded, and it is load-bearing.
+//
+// Every action the reconciler can take moves the row it acted on: a forfeit advances it to
+// 'settling', a successful relay to 'settled', a chain sync to the chain's own status. So a
+// row that is still here after many runs is one the reconciler could NOT move, and nothing
+// about the next run will change that. Each status arm has such a state:
+//   - settling  past 24h  -> planner returns 'stale-alert', which only logs
+//   - accepted  with a null creator_score -> 'skip-incomplete'; settle() needs a score
+//   - open      already matching a chain-Open duel -> markChainResolved has nothing to write
+// None of these touch updated_at, so without a floor they are re-selected on every run
+// forever. They are also the OLDEST rows in the table, and this query is
+// `order by updated_at asc limit 100` — so they collect at the head of the page and, once
+// there are 100 of them, push every genuinely stuck duel out of the result entirely. The
+// reconciler would then be permanently busy doing nothing, which is a total loss of the
+// settlement liveness it exists to provide.
+//
+// 48h is far past the point where retrying helps: the tightest arm re-examines a row every
+// run, so a duel gets hundreds of attempts at a 10-minute cadence. Past the floor the
+// on-chain escape hatches take over — refundStale and cancelExpired are permissionless, are
+// surfaced on the duel page, and need no DB row to work — and POST /refunded syncs the row
+// the moment a player uses one. Giving up costs observability, not money.
 export async function listReconcileCandidates(): Promise<DuelRow[]> {
   const rows = await sql`
     select * from duels
-    where (status = 'settling' and updated_at < now() - interval '5 minutes')
-       or (status = 'accepted' and updated_at < now() - interval '30 minutes')
-       or (status in ('open', 'funded') and updated_at < now() - interval '24 hours')
+    where updated_at > now() - interval '48 hours'
+      and ( (status = 'settling' and updated_at < now() - interval '5 minutes')
+         or (status = 'accepted' and updated_at < now() - interval '30 minutes')
+         or (status in ('open', 'funded') and updated_at < now() - interval '24 hours') )
     order by updated_at asc limit 100`;
   return rows.map(toRow);
 }

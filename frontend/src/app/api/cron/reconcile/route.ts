@@ -3,16 +3,19 @@ import { timingSafeEqual } from 'crypto';
 import { zeroAddress, formatEther, type Address } from 'viem';
 import { publicClient } from '@/lib/chain';
 import { ESCROW_ADDRESS, USDM_ADDRESS, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
-import { relaySettle, oracleAddress } from '@/lib/oracle';
+import { relaySettle, oracleAddress, RELAY_RECEIPT_TIMEOUT_MS } from '@/lib/oracle';
 import { listReconcileCandidates, markSettling, markSettled, markChainResolved, type DuelRow } from '@/lib/duelStore';
 import { planReconcileAction } from '@/lib/reconcile';
 
 export const dynamic = 'force-dynamic';
 // Sequential on-chain relays run per invocation — give this route real headroom, and pair
 // it with the wall-clock budget below so we bail out safely before the platform kills the
-// invocation outright. relaySettle now awaits each receipt (so a revert reads as failure),
-// which means roughly 10 duels clear per run rather than 100. That is fine at a 10-minute
-// cadence, and the `remaining` count in the response surfaces any real backlog.
+// invocation outright. relaySettle awaits each receipt (so a revert reads as failure), which
+// caps throughput at a handful of duels per run rather than 100: relays may only *start*
+// while TIME_BUDGET_MS - RELAY_RECEIPT_TIMEOUT_MS of budget remains, so the worst case is a
+// relay beginning at 30s and timing out at 50s, still inside maxDuration. Cheap outcomes
+// (chain-resolved syncs, skips) keep running until the full budget. That is fine at a
+// 10-minute cadence, and the `remaining` count in the response surfaces any real backlog.
 export const maxDuration = 60;
 
 const LOW_USDM = 1n * 10n ** 18n; // 1 USDm
@@ -136,6 +139,19 @@ async function run(req: Request) {
         continue;
       }
 
+      // Chain says Accepted but the DB never caught up — POST /accept died after the
+      // acceptDuel tx landed. Sync the row, including the acceptor address that only the
+      // chain has, and let a later tick plan from the corrected row (it needs to age 30
+      // minutes as 'accepted' before it can forfeit anyway). Without this the row sits at
+      // 'open' forever while the escrow holds both stakes, and the only recourse left is a
+      // player finding the 24h refundStale button themselves.
+      if (d.status === 'open' || d.status === 'funded') {
+        action = 'chain-accepted-sync';
+        const synced = await markChainResolved(d.id, onchainStatus, { acceptor: onchainDuel[1] });
+        results.push({ id: d.id, action: synced ? action : `${action}-noop`, onchainStatus });
+        continue;
+      }
+
       // Chain says Accepted — the row is genuinely live and the planner decides from here.
       action = planReconcileAction(d, startedAt);
       // Recorded rather than silently dropped so `processed` reflects rows examined, not
@@ -147,6 +163,17 @@ async function run(req: Request) {
         continue;
       }
       if (d.creatorScore === null) { results.push({ id: d.id, action: 'skip-incomplete' }); continue; }
+
+      // Both remaining actions broadcast a settle() and then block for up to
+      // RELAY_RECEIPT_TIMEOUT_MS waiting on its receipt. The top-of-loop budget check can
+      // only fire *between* iterations, so it cannot interrupt a relay already in flight —
+      // starting one without that much budget still in hand is what runs the invocation past
+      // maxDuration and gets it killed, losing the tx hash and the response along with it.
+      // Stop cleanly here instead; the row is untouched, so the next tick picks it up.
+      if (Date.now() - startedAt > TIME_BUDGET_MS - RELAY_RECEIPT_TIMEOUT_MS) {
+        remaining = candidates.length - i;
+        break;
+      }
 
       if (action === 'forfeit') {
         // markSettling's guarded UPDATE (where status = 'accepted') is our atomic claim on
