@@ -131,33 +131,36 @@ contract DuelEscrowInvariantTest is StdInvariant, Test {
     }
 
     /// @notice Proves each handler action path was actually exercised (not just
-    /// structurally non-reverting). A path with a zero or implausibly low
-    /// success count means the invariant above is passing vacuously for it.
+    /// structurally non-reverting). A path with a zero success count means the
+    /// invariant above is passing vacuously for it, so these assertions are the
+    /// only thing standing between a broken handler and a green suite.
     ///
-    /// Gated on createSuccesses > 0: Foundry persists a shrunk counterexample
-    /// for a failing invariant to cache/invariant/failures/... and replays it
-    /// on the next run. A shrunk replay is typically a single call, so all
-    /// five counters can legitimately be 0 even though invariant_escrowSolvent
-    /// itself passes on that short sequence. Without this guard, afterInvariant
-    /// would then fail on every replay of any recorded failure (stale or
-    /// genuine), keeping the suite red until `forge clean` and muddying the
-    /// diagnosis of a real solvency break by piling unrelated assertion
-    /// failures on top of it. createSuccesses > 0 is a reasonable proxy for
-    /// "a real campaign ran" since every other path requires a created duel
-    /// first.
+    /// They are deliberately UNCONDITIONAL. A previous version gated them on
+    /// createSuccesses > 0 to stop them firing during a replay: Foundry persists
+    /// a shrunk counterexample to cache/invariant/failures/ and replays it on the
+    /// next run, and a shrunk sequence is typically one call, so every counter can
+    /// legitimately be 0. But that gate disabled the check in exactly the case it
+    /// exists to catch. If a change ever breaks createDuel in the handler — a tier
+    /// change, a token allowlist change, a new revert — then every call reverts,
+    /// createSuccesses is 0, invariant_escrowSolvent holds trivially (balance 0 ==
+    /// locked 0), and the whole suite goes green while testing nothing.
+    ///
+    /// The replay problem it worked around is a local workflow artifact, not a
+    /// property of this code: cache/ is gitignored, so CI and any fresh clone
+    /// never have a corpus. If these assertions fire alongside an
+    /// invariant_escrowSolvent failure, you are replaying a recorded
+    /// counterexample — run `forge clean` (or delete cache/invariant/failures/)
+    /// to drop it, then re-run a full campaign. Do not re-add the gate.
     function afterInvariant() public view {
         console.log("createSuccesses", handler.createSuccesses());
         console.log("acceptSuccesses", handler.acceptSuccesses());
         console.log("settleSuccesses", handler.settleSuccesses());
         console.log("refundSuccesses", handler.refundSuccesses());
         console.log("cancelSuccesses", handler.cancelSuccesses());
-        if (handler.createSuccesses() > 0) {
-            assertGt(handler.acceptSuccesses(), 0);
-            assertGt(handler.settleSuccesses(), 0);
-            assertGt(handler.refundSuccesses(), 0);
-            assertGt(handler.cancelSuccesses(), 0);
-        } else {
-            console.log("afterInvariant: coverage assertions skipped (createSuccesses == 0) -- this is a replay of a recorded failure or a degenerate campaign, not a full run");
-        }
+        assertGt(handler.createSuccesses(), 0);
+        assertGt(handler.acceptSuccesses(), 0);
+        assertGt(handler.settleSuccesses(), 0);
+        assertGt(handler.refundSuccesses(), 0);
+        assertGt(handler.cancelSuccesses(), 0);
     }
 }
