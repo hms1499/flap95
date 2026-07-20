@@ -38,6 +38,19 @@ happen often. Every tie refunds both players, collects no fee, and ends the duel
 result. `verifyRun()` already computes `deathTick` (`src/engine/verify.ts:26`) and the
 pipeline discards it.
 
+### 4. The creator can never see their own result
+
+Pre-existing, and surfaced while designing the above. `api/duels/[id]/route.ts` already
+returns `winner`, `creatorScore`, `acceptorScore` and `settleTx` once a duel is settled —
+the data is served. But the loader in `duels/[id]/page.tsx:110` treats `settled` as
+terminal and falls through to `setPhase('error')` with **"This duel is not open."**
+
+So a creator stakes, plays, waits, wins — and reopening their duel link shows an error
+dialog. The only way they learn the outcome is noticing their wallet balance changed. In a
+product whose emotional payoff *is* the VICTORY banner, this is the largest leak in the
+flow. It is in scope here because it sits on exactly the surface the tie-break changes and
+needs no new data.
+
 ## What this design does NOT change
 
 Verified before writing this spec:
@@ -124,7 +137,45 @@ costs nothing — no `engine_version` column is required.
 **On-chain readability.** The `DuelSettled` event will sometimes show equal `scoreA`/
 `scoreB` with a non-zero winner, which reads as inconsistent from a block explorer. The
 resolution is documentation, not a contract change: state the tie-break rule in the duel
-result UI and in the README. Redeploying an escrow for event cosmetics is not worth it.
+result UI (see 3b) and in the README. Redeploying an escrow for event cosmetics is not
+worth it.
+
+### 3a. Show settled duels instead of an error
+
+**File:** `src/app/duels/[id]/page.tsx`
+
+In the loader, `status === 'settled'` must route to the result view, not to `error`:
+
+- Add a `settled` phase that renders `DuelResult`.
+- Orient the scoreboard from the **connected wallet's** point of view: if `address` matches
+  `creator`, then `yourScore = creatorScore`; otherwise `yourScore = acceptorScore`. A
+  third-party viewer (neither address, or no wallet connected) sees the creator as "them"
+  and a neutral, non-celebratory framing — nobody should be shown a VICTORY banner for a
+  duel they were not in.
+- `winner` maps to `won`/`tie` relative to that same viewer.
+- `settleTx` already flows through, so the Celoscan link works unchanged.
+
+`status === 'cancelled'` keeps its current terminal handling — a refund is not a result.
+
+The GET route needs one addition: return `creatorDeathTick` and `acceptorDeathTick`
+alongside the scores when settled, gated by the same `settled` check as the other fields
+so an in-flight duel never leaks them.
+
+### 3b. Explain a tie-broken win in the result UI
+
+**File:** `src/components/DuelResult.tsx`
+
+Today the component derives its highlight purely from `yourScore > theirScore`. After
+tie-breaking, a duel can be won with equal scores — the scoreboard would show `07 — 07`
+with neither side highlighted under a `VICTORY` banner, which reads as a broken system.
+
+- Accept optional `yourTime` / `theirTime` props (seconds, from `deathTick / 60`).
+- When the scores are equal and a winner exists, show survival time under each score and
+  label the outcome **"Survived longer"**.
+- Drive the side highlight from the actual winner rather than from the score comparison, so
+  the highlighted side always agrees with the banner.
+
+When the scores differ, the display is unchanged — no extra noise in the common case.
 
 ## Testing
 
@@ -134,8 +185,14 @@ result UI and in the README. Redeploying an escrow for event cosmetics is not wo
   differing death ticks in both directions; equal on both; and **either death tick NULL,
   which must yield `tie`** (the legacy-duel guarantee).
 - `GameCanvas` — the tap that starts the countdown does not appear in the submitted trace.
+- `DuelResult` — equal scores with a winner renders the survival times, the "Survived
+  longer" label, and highlights the side that actually won.
+- Duel page loader — a settled duel renders the result rather than the error dialog, and
+  the scoreboard orients correctly for the creator, for the acceptor, and for a
+  disconnected third-party viewer.
 - Manual: create a duel inside MiniPay and confirm no pipes are lost between the wallet
   confirmation and the first input.
+- Manual: settle a duel, then reopen its link as the creator and confirm the result shows.
 
 ## Out of scope
 
