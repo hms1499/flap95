@@ -129,15 +129,15 @@ pipeline would give `decideWinner` four adjacent same-typed `number` parameters,
 transposing a pair type-checks cleanly and silently inverts a real-money result. Introduce:
 
 ```ts
-interface RunOutcome { score: number; deathTick: number }
+interface RunOutcome { score: number; deathTick: number | null }
 
-decideWinner(creator: RunOutcome | null, acceptor: RunOutcome | null):
+decideWinner(creator: RunOutcome, acceptor: RunOutcome):
   'creator' | 'acceptor' | 'tie'
 ```
 
-`null` encodes a legacy duel whose death tick was never recorded, so the "old duels settle
-under the old rule" guarantee becomes a thing the type system enforces rather than a
-convention each call site has to remember.
+The nullability sits on `deathTick`, not on the outcome: a legacy duel always has scores,
+it only lacks the death tick. A `null` there makes the "old duels settle under the old
+rule" guarantee something a call site cannot silently skip.
 
 **Touch points:**
 
