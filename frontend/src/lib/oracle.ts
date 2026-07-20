@@ -48,6 +48,44 @@ export async function signSettle(duelId: bigint, winner: Address, scoreA: number
 export const RELAY_RECEIPT_TIMEOUT_MS = 20_000;
 
 /**
+ * Headroom over the current base fee for the settle tx's fee cap. The cap is only a ceiling —
+ * the tx is charged (baseFee + tip), so a generous multiplier costs nothing on a quiet block
+ * and buys survival across a spike between our read and inclusion.
+ */
+const BASE_FEE_MULTIPLIER = 2n;
+
+/**
+ * Builds the gas price fields for a fee-currency (CIP-64) settle.
+ *
+ * Letting viem derive these is what broke every settle on mainnet: its estimate for a
+ * fee-currency tx is denominated in that currency (USDm gas reads ~14 gwei where CELO reads
+ * ~207), but the node validates maxFeePerGas against the NATIVE base fee regardless of the
+ * fee currency. The resulting cap sat an order of magnitude under the floor and the node
+ * refused the tx before broadcast — reported as the misleading "max fee per gas less than
+ * block base fee", with no tx hash and the oracle nonce never moving. Worse, viem
+ * intermittently serialised the same request as a plain eip1559 tx instead of cip64, so the
+ * failure looked nondeterministic.
+ *
+ * So: derive the cap from the native base fee, and pin `type` so the request can never
+ * silently degrade to a native-gas tx the oracle has no CELO budget for.
+ */
+export async function feeFields() {
+  const [block, tip] = await Promise.all([
+    publicClient.getBlock(),
+    publicClient.request({ method: 'eth_maxPriorityFeePerGas' } as never) as Promise<Hex>,
+  ]);
+  const base = block.baseFeePerGas;
+  if (base === null) throw new Error('relaySettle: chain returned no baseFeePerGas');
+  const maxPriorityFeePerGas = BigInt(tip);
+  return {
+    type: 'cip64',
+    feeCurrency: USDM_ADDRESS,
+    maxPriorityFeePerGas,
+    maxFeePerGas: base * BASE_FEE_MULTIPLIER + maxPriorityFeePerGas,
+  } as const;
+}
+
+/**
  * Submits settle() from the oracle account and waits for it to be mined.
  * Returns the tx hash only on a confirmed successful receipt, or null if relaying failed.
  *
@@ -74,7 +112,7 @@ export async function relaySettle(
     hash = await wallet.writeContract({
       address: ESCROW_ADDRESS, abi: duelEscrowAbi, functionName: 'settle',
       args: [duelId, winner, scoreA, scoreB, sig],
-      feeCurrency: USDM_ADDRESS,
+      ...(await feeFields()),
     });
     const receipt = await publicClient.waitForTransactionReceipt({
       hash, timeout: RELAY_RECEIPT_TIMEOUT_MS,
