@@ -207,7 +207,7 @@ async function run(req: Request) {
         // markSettling's guarded UPDATE (where status = 'accepted') is our atomic claim on
         // this duel. If it returns false, a live user request (replay/route.ts) already won
         // the race and moved the row — we must not also relay settle() for it.
-        const gotSettling = await markSettling(d.id, [], 0, 'creator');
+        const gotSettling = await markSettling(d.id, [], 0, 0, 'creator');
         if (!gotSettling) {
           results.push({ id: d.id, action: 'skip-lost-race', changed: false });
           continue;

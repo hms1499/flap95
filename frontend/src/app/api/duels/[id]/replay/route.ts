@@ -14,7 +14,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (duel.status !== 'funded') return NextResponse.json({ error: 'bad state' }, { status: 409 });
     const r = verifyRun(duel.seed, taps);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 400 });
-    await setCreatorRun(duel.id, taps, r.score);
+    await setCreatorRun(duel.id, taps, r.score, r.deathTick);
     return NextResponse.json({ ok: true, score: r.score });
   }
 
@@ -22,14 +22,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (duel.status !== 'accepted' || !duel.onchainId || duel.creatorScore === null)
       return NextResponse.json({ error: 'bad state' }, { status: 409 });
     const r = verifyRun(duel.seed, taps);
-    // Invalid acceptor trace = forfeit: creator wins, acceptor scored 0.
+    // A trace that fails verification is a forfeit, decided before any tie-break: the
+    // creator wins outright and the acceptor is recorded at 0. Survival time is meaningless
+    // for a run we could not replay, so it is stored as 0 rather than fabricated.
     const acceptorScore = r.ok ? r.score : 0;
-    const winner = r.ok ? decideWinner(duel.creatorScore, acceptorScore) : 'creator';
+    const acceptorDeathTick = r.ok ? r.deathTick : 0;
+    const winner = r.ok
+      ? decideWinner(
+          { score: duel.creatorScore, deathTick: duel.creatorDeathTick },
+          { score: acceptorScore, deathTick: acceptorDeathTick },
+        )
+      : 'creator';
     const winnerAddr: Address =
       winner === 'tie' ? zeroAddress
       : winner === 'creator' ? (duel.creator as Address)
       : (duel.acceptor as Address);
-    const gotSettling = await markSettling(duel.id, r.ok ? taps : [], acceptorScore, winner);
+    const gotSettling = await markSettling(duel.id, r.ok ? taps : [], acceptorScore, acceptorDeathTick, winner);
 
     if (!gotSettling) {
       // Lost the race (e.g. the cron reconciler already forfeited this duel). relaySettle

@@ -20,6 +20,11 @@ create table if not exists duels (
 create index if not exists duels_status_idx on duels (status);
 create index if not exists duels_status_updated_idx on duels (status, updated_at);
 
+-- Survival time in engine ticks (60/s), used to break tied scores.
+-- Nullable on purpose: rows that predate these columns settle under the score-only rule.
+alter table duels add column if not exists creator_death_tick integer;
+alter table duels add column if not exists acceptor_death_tick integer;
+
 create table if not exists practice_scores (
   id serial primary key,
   name text not null,

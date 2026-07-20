@@ -13,6 +13,8 @@ export interface DuelRow {
   status: DuelStatus;
   creatorScore: number | null;
   acceptorScore: number | null;
+  creatorDeathTick: number | null;
+  acceptorDeathTick: number | null;
   creatorTaps: number[] | null;
   acceptorTaps: number[] | null;
   challengeTo: string | null;
@@ -48,6 +50,8 @@ function toRow(r: Record<string, unknown>): DuelRow {
     status: r.status as DuelStatus,
     creatorScore: r.creator_score as number | null,
     acceptorScore: r.acceptor_score as number | null,
+    creatorDeathTick: (r.creator_death_tick ?? null) as number | null,
+    acceptorDeathTick: (r.acceptor_death_tick ?? null) as number | null,
     creatorTaps: r.creator_taps as number[] | null,
     acceptorTaps: r.acceptor_taps as number[] | null,
     challengeTo: r.challenge_to as string | null,
@@ -78,8 +82,9 @@ export async function markFunded(id: number, onchainId: bigint, stakeWei: bigint
     status = 'funded', updated_at = now() where id = ${id} and status = 'draft'`;
 }
 
-export async function setCreatorRun(id: number, taps: number[], score: number): Promise<void> {
+export async function setCreatorRun(id: number, taps: number[], score: number, deathTick: number): Promise<void> {
   await sql`update duels set creator_taps = ${JSON.stringify(taps)}::jsonb, creator_score = ${score},
+    creator_death_tick = ${deathTick},
     status = 'open', updated_at = now() where id = ${id} and status = 'funded'`;
 }
 
@@ -91,9 +96,11 @@ export async function markAccepted(id: number, acceptor: string): Promise<void> 
 // Returns false if the guard did not match (another actor already moved the row) —
 // the caller lost the race and must not proceed to relay on-chain.
 export async function markSettling(
-  id: number, taps: number[], score: number, winner: 'creator' | 'acceptor' | 'tie',
+  id: number, taps: number[], score: number, deathTick: number,
+  winner: 'creator' | 'acceptor' | 'tie',
 ): Promise<boolean> {
   const rows = await sql`update duels set acceptor_taps = ${JSON.stringify(taps)}::jsonb, acceptor_score = ${score},
+    acceptor_death_tick = ${deathTick},
     winner = ${winner}, status = 'settling', updated_at = now()
     where id = ${id} and status = 'accepted'
     returning id`;
