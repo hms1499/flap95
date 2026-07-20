@@ -58,7 +58,15 @@ export function GameCanvas({ seed, ghostTaps, onRunEnd }: {
       ctx.font = '20px monospace';
       ctx.fillStyle = '#fff';
       ctx.fillText(`SCORE ${sim.state.score}`, 10, 28);
-      if (ghost) ctx.fillText(`GHOST ${ghost.state.score}`, 10, 52);
+      // The ghost's score is deliberately NOT drawn. Showing it hands the acceptor a
+      // free, zero-cost read on exactly how many pipes they need — enough to clear one
+      // more and then stop taking risk, while the creator plays blind. The grey bird
+      // stays: racing it is the product, and counting its pipes costs attention the
+      // player needs to stay alive, which is the whole point.
+      if (ghost && !ghost.state.alive) {
+        ctx.fillStyle = '#fff';
+        ctx.fillText('GHOST DOWN', 10, 52);
+      }
     }
 
     function frame(now: number) {
