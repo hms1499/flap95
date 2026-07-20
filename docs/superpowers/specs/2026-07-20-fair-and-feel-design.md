@@ -123,6 +123,22 @@ either death tick is NULL, skip step 2 and return `tie`. In-flight duels settle 
 exactly the rule that applied when they were created. This is the versioning story, and it
 costs nothing — no `engine_version` column is required.
 
+**Carry the outcome as one value, not two scalars.** A run is now `(score, deathTick)` —
+exactly what `verifyRun()` already returns. Threading two parallel numbers through the
+pipeline would give `decideWinner` four adjacent same-typed `number` parameters, where
+transposing a pair type-checks cleanly and silently inverts a real-money result. Introduce:
+
+```ts
+interface RunOutcome { score: number; deathTick: number }
+
+decideWinner(creator: RunOutcome | null, acceptor: RunOutcome | null):
+  'creator' | 'acceptor' | 'tie'
+```
+
+`null` encodes a legacy duel whose death tick was never recorded, so the "old duels settle
+under the old rule" guarantee becomes a thing the type system enforces rather than a
+convention each call site has to remember.
+
 **Touch points:**
 
 - `src/engine/verify.ts` — already returns `deathTick`; stop discarding it at the call
@@ -193,6 +209,22 @@ When the scores differ, the display is unchanged — no extra noise in the commo
 - Manual: create a duel inside MiniPay and confirm no pipes are lost between the wallet
   confirmation and the first input.
 - Manual: settle a duel, then reopen its link as the creator and confirm the result shows.
+
+## Known consequence, deferred
+
+Tie-breaking narrows what a third party can verify from chain data alone. Before this
+change, `DuelSettled` carried enough information to check the oracle: if `scoreA > scoreB`
+the winner had to be the creator. After it, a duel won on survival time shows equal scores
+against a non-zero winner, and `deathTick` exists only off-chain — so that outcome has to
+be taken on trust.
+
+The fix needs no contract change: `creator_taps` and `acceptor_taps` are already stored, so
+exposing them once a duel is settled lets anyone re-run `simulate(seed, taps)` and check
+both the score and the death tick themselves. That restores full verifiability and matches
+the "provably-fair replay" claim in the README.
+
+Deferred to a follow-up rather than widening this spec. Recorded here so it is not
+rediscovered as a surprise.
 
 ## Out of scope
 
