@@ -4,9 +4,28 @@ import { celo } from 'viem/chains';
 import { publicClient } from './chain';
 import { ESCROW_ADDRESS, USDM_ADDRESS, duelEscrowAbi } from './contracts';
 
-export function decideWinner(creatorScore: number, acceptorScore: number): 'creator' | 'acceptor' | 'tie' {
-  if (creatorScore > acceptorScore) return 'creator';
-  if (acceptorScore > creatorScore) return 'acceptor';
+/** A finished run. `deathTick` is null for duels created before survival time was recorded. */
+export interface RunOutcome {
+  score: number;
+  deathTick: number | null;
+}
+
+/**
+ * Decides a duel: higher score wins; equal scores go to whoever survived longer.
+ *
+ * Taking whole outcomes rather than four loose numbers is deliberate. The scalar form
+ * (creatorScore, creatorDeathTick, acceptorScore, acceptorDeathTick) puts four same-typed
+ * numbers side by side, where transposing a pair type-checks cleanly and silently inverts
+ * a real-money result.
+ *
+ * A null deathTick means the row predates the columns, so the survival tie-break is skipped
+ * and the duel settles under the score-only rule that applied when it was created. Ties
+ * refund both players, so falling back to 'tie' is always the safe direction.
+ */
+export function decideWinner(creator: RunOutcome, acceptor: RunOutcome): 'creator' | 'acceptor' | 'tie' {
+  if (creator.score !== acceptor.score) return creator.score > acceptor.score ? 'creator' : 'acceptor';
+  if (creator.deathTick === null || acceptor.deathTick === null) return 'tie';
+  if (creator.deathTick !== acceptor.deathTick) return creator.deathTick > acceptor.deathTick ? 'creator' : 'acceptor';
   return 'tie';
 }
 

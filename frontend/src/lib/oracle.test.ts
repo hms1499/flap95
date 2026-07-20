@@ -4,14 +4,39 @@ const getBlock = vi.fn();
 const request = vi.fn();
 vi.mock('./chain', () => ({ publicClient: { getBlock: () => getBlock(), request: (a: unknown) => request(a) } }));
 
-import { decideWinner, feeFields } from './oracle';
+import { decideWinner, feeFields, type RunOutcome } from './oracle';
 
 describe('decideWinner', () => {
-  it('creator wins on higher score', () => expect(decideWinner(5, 3)).toBe('creator'));
-  it('acceptor wins on higher score', () => expect(decideWinner(2, 3)).toBe('acceptor'));
-  it('equal scores tie (including 0-0)', () => {
-    expect(decideWinner(4, 4)).toBe('tie');
-    expect(decideWinner(0, 0)).toBe('tie');
+  const run = (score: number, deathTick: number | null = null): RunOutcome => ({ score, deathTick });
+
+  it('creator wins on higher score', () => {
+    expect(decideWinner(run(5), run(3))).toBe('creator');
+  });
+  it('acceptor wins on higher score', () => {
+    expect(decideWinner(run(2), run(3))).toBe('acceptor');
+  });
+  it('score beats survival time — a lower score never wins by lasting longer', () => {
+    expect(decideWinner(run(5, 100), run(3, 3600))).toBe('creator');
+  });
+
+  it('equal scores: whoever survived longer wins', () => {
+    expect(decideWinner(run(4, 900), run(4, 800))).toBe('creator');
+    expect(decideWinner(run(4, 800), run(4, 900))).toBe('acceptor');
+  });
+  it('equal score and equal survival time is a true tie', () => {
+    expect(decideWinner(run(4, 900), run(4, 900))).toBe('tie');
+    expect(decideWinner(run(0, 55), run(0, 55))).toBe('tie');
+  });
+
+  // Legacy duels: rows created before the death-tick columns existed. They must settle
+  // under the rule that applied when they were created — score only, ties refund.
+  it('ties when either side has no recorded survival time', () => {
+    expect(decideWinner(run(4, null), run(4, 900))).toBe('tie');
+    expect(decideWinner(run(4, 900), run(4, null))).toBe('tie');
+    expect(decideWinner(run(4, null), run(4, null))).toBe('tie');
+  });
+  it('still decides on score when survival time is missing', () => {
+    expect(decideWinner(run(5, null), run(3, null))).toBe('creator');
   });
 });
 
