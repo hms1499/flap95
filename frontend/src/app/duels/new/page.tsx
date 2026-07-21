@@ -9,6 +9,7 @@ import { GameCanvas } from '@/components/GameCanvas';
 import { TxProgress } from '@/components/TxProgress';
 import { ESCROW_ADDRESS, STAKE_TOKENS, type StakeToken, stakeTiersWei, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
+import { saveDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
 
 type Phase = 'pick-stake' | 'approving' | 'depositing' | 'binding' | 'playing' | 'submitting' | 'done' | 'error';
 
@@ -36,6 +37,9 @@ function CreateDuel() {
       });
       const draft = await res.json();
       setDuel(draft);
+      // Stash the seed so the creator can finish this run later if they abandon it
+      // before it is recorded (the seed is never re-served by any API).
+      saveDuelSeed(localStorage, draft.id, draft.seed);
 
       setPhase('approving');
       const allowance = await publicClient.readContract({
@@ -77,6 +81,7 @@ function CreateDuel() {
     });
     if (!res.ok) { setError('Replay rejected'); setPhase('error'); return; }
     const data = await res.json();
+    clearDuelSeed(localStorage, duel.id);
     setFinalScore(data.score);
     setPhase('done');
   }, [duel]);
