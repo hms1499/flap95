@@ -248,7 +248,16 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   return (
     <main className="desktop">
       {phase === 'loading' && <Window title="DUEL.EXE"><p>Loading…</p></Window>}
-      {phase === 'preview' && detail && (
+      {phase === 'preview' && detail && viewerRole(address, detail.creator, detail.acceptor) === 'creator' && (
+        <Window title={`DUEL_${detail.id}.EXE — yours`}>
+          <p>⏳ Your duel is open, waiting for a challenger.</p>
+          <p style={{ fontSize: 12 }}>Stake held: <b className="stake">{stakeStr} {symbol}</b>. Share this page&apos;s link and
+            whoever opens it can accept. You can&apos;t accept your own duel. If nobody does within 24 hours
+            of creation, come back here to reclaim your stake.</p>
+          <button onClick={() => router.push('/duels')} style={{ width: '100%' }}>Back to duels</button>
+        </Window>
+      )}
+      {phase === 'preview' && detail && viewerRole(address, detail.creator, detail.acceptor) !== 'creator' && (
         <Window title={`DUEL_${detail.id}.EXE`}>
           <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{detail.creator.slice(0, 8)}…</span></p>
           <p style={{ fontSize: 12 }}>Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>

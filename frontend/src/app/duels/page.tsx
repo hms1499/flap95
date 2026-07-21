@@ -5,6 +5,7 @@ import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
 import { tokenByAddress } from '@/lib/contracts';
+import { viewerRole } from '@/lib/outcome';
 
 interface OpenDuel { id: number; stakeWei: string; token: string | null; creator: string; challengeTo: string | null; createdAt: string }
 
@@ -27,13 +28,19 @@ export default function DuelsPage() {
         <table className="ledger">
           <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
           <tbody>
-            {duels.map((d) => (
-              <tr key={d.id}>
-                <td>⚔️ duel_{d.id}.exe<br /><small>{d.creator.slice(0, 8)}…{d.challengeTo ? ' · rematch' : ''}</small></td>
-                <td className="stake">{stakeLabel(d)}</td>
-                <td><Link href={`/duels/${d.id}`}><button>Open</button></Link></td>
-              </tr>
-            ))}
+            {duels.map((d) => {
+              // acceptDuel reverts with SelfAccept() for the creator, so a duel of your own
+              // must never look like something you can join — the revert only surfaces after
+              // the ERC-20 approve has already cost the user gas.
+              const mine = viewerRole(address, d.creator, null) === 'creator';
+              return (
+                <tr key={d.id}>
+                  <td>⚔️ duel_{d.id}.exe<br /><small>{mine ? 'yours · waiting for challenger' : `${d.creator.slice(0, 8)}…${d.challengeTo ? ' · rematch' : ''}`}</small></td>
+                  <td className="stake">{stakeLabel(d)}</td>
+                  <td><Link href={`/duels/${d.id}`}><button>{mine ? 'View' : 'Open'}</button></Link></td>
+                </tr>
+              );
+            })}
             {duels.length === 0 && <tr><td colSpan={3}>No open duels. Create one!</td></tr>}
           </tbody>
         </table>
