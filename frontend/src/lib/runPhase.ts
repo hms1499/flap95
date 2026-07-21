@@ -30,3 +30,24 @@ export function countdownLabel(elapsedMs: number): string {
   if (elapsedMs < beat * 3) return '1';
   return 'GO';
 }
+
+/** What losing visibility means for a run, by phase. */
+export type VisibilityAction = 'end-run' | 'reset-idle' | 'none';
+
+/**
+ * Decides what a backgrounded tab does to a run, by phase.
+ *
+ * `running` ends: a backgrounded tab throttles requestAnimationFrame, and on
+ * return the fixed-timestep accumulator would burn a backlog of ticks with no
+ * input and kill the bird — costing a staked player for something that is not
+ * skill. Ending the run instead submits the taps so far; the engine replays them
+ * to a natural death, which is the honest outcome of the player having stopped.
+ *
+ * `countdown` rewinds to idle so it cannot silently complete while hidden and
+ * drop the player into an already-falling run. `idle` has no run to affect.
+ */
+export function onHidden(phase: RunPhase): VisibilityAction {
+  if (phase === 'running') return 'end-run';
+  if (phase === 'countdown') return 'reset-idle';
+  return 'none';
+}

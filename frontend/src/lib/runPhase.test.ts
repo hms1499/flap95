@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { COUNTDOWN_MS, countdownLabel, onPointerDown, type RunPhase } from './runPhase';
+import { COUNTDOWN_MS, countdownLabel, onHidden, onPointerDown, type RunPhase } from './runPhase';
 
 describe('onPointerDown', () => {
   it('the first tap starts the countdown and is NOT a flap', () => {
@@ -28,5 +28,17 @@ describe('countdownLabel', () => {
   });
   it('still reads GO at the exact end of the window', () => {
     expect(countdownLabel(COUNTDOWN_MS)).toBe('GO');
+  });
+});
+
+describe('onHidden', () => {
+  it('ends a running run — the bird would fall and die anyway once tapping stops', () => {
+    expect(onHidden('running')).toBe('end-run');
+  });
+  it('rewinds a countdown to idle so it cannot complete while the page is hidden', () => {
+    expect(onHidden('countdown')).toBe('reset-idle');
+  });
+  it('does nothing at idle — there is no run to affect', () => {
+    expect(onHidden('idle')).toBe('none');
   });
 });
