@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { CONFIG, GameSim } from '@/engine/engine';
-import { COUNTDOWN_MS, countdownLabel, onPointerDown, type RunPhase } from '@/lib/runPhase';
+import { COUNTDOWN_MS, countdownLabel, onHidden, onPointerDown, type RunPhase } from '@/lib/runPhase';
 
 const TICK_MS = 1000 / CONFIG.ticksPerSecond;
 
@@ -37,6 +37,24 @@ export function GameCanvas({ seed, ghostTaps, onRunEnd }: {
       if (next.isFlap) pendingTap = true;
     };
     canvas.addEventListener('pointerdown', onDown);
+
+    // A backgrounded tab throttles requestAnimationFrame; on return the accumulator
+    // would burn a tick backlog with no input and kill the bird. End a running run
+    // (the honest outcome — the player stopped tapping) and rewind a countdown to
+    // idle. Using visibilitychange, not blur: blur also fires for a wallet popup while
+    // the page is still visible, which is not the condition that causes the backlog.
+    const onVisibility = () => {
+      if (document.visibilityState !== 'hidden') return;
+      const action = onHidden(phase);
+      if (action === 'end-run') {
+        if (!endedRef.current) { endedRef.current = true; cancelAnimationFrame(raf); onRunEnd(taps, sim.state.score); }
+      } else if (action === 'reset-idle') {
+        // countdownStart is left stale on purpose: the next tap from idle re-arms it
+        // fresh, and the running transition resets last/acc, so nothing leaks forward.
+        phase = 'idle';
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     function draw() {
       ctx.fillStyle = '#7ec0ee';
@@ -135,7 +153,11 @@ export function GameCanvas({ seed, ghostTaps, onRunEnd }: {
     }
     raf = requestAnimationFrame(frame);
 
-    return () => { cancelAnimationFrame(raf); canvas.removeEventListener('pointerdown', onDown); };
+    return () => {
+      cancelAnimationFrame(raf);
+      canvas.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [seed, ghostTaps, onRunEnd]);
 
   return (
