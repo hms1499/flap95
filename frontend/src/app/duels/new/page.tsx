@@ -9,6 +9,8 @@ import { GameCanvas } from '@/components/GameCanvas';
 import { TxProgress } from '@/components/TxProgress';
 import { ESCROW_ADDRESS, STAKE_TOKENS, type StakeToken, stakeTiersWei, duelEscrowAbi, erc20Abi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
+import { friendlyError, type FriendlyError } from '@/lib/friendlyError';
+import { ErrorReport } from '@/components/ErrorReport';
 import { saveDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
 
 type Phase = 'pick-stake' | 'approving' | 'depositing' | 'binding' | 'playing' | 'submitting' | 'done' | 'error';
@@ -24,7 +26,11 @@ function CreateDuel() {
 
   const [phase, setPhase] = useState<Phase>('pick-stake');
   const [token, setToken] = useState<StakeToken>(STAKE_TOKENS[0]);
-  const [error, setError] = useState('');
+  // The chosen tier is held as an index, not as a wei amount: switching currency rebuilds
+  // the tier list, and an index carries the player's "middle tier" choice across that
+  // switch where a raw bigint would silently become an amount they never picked.
+  const [tier, setTier] = useState(0);
+  const [error, setError] = useState<FriendlyError | null>(null);
   const [duel, setDuel] = useState<{ id: number; seed: number } | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
 
@@ -67,7 +73,7 @@ function CreateDuel() {
       if (!bind.ok) throw new Error('bind failed');
       setPhase('playing');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(friendlyError(e));
       setPhase('error');
     }
   }
@@ -79,7 +85,7 @@ function CreateDuel() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role: 'creator', taps }),
     });
-    if (!res.ok) { setError('Replay rejected'); setPhase('error'); return; }
+    if (!res.ok) { setError({ message: 'Replay rejected' }); setPhase('error'); return; }
     const data = await res.json();
     clearDuelSeed(localStorage, duel.id);
     setFinalScore(data.score);
@@ -118,14 +124,25 @@ function CreateDuel() {
           <fieldset style={{ marginTop: 8 }}>
             <legend>Stake — winner takes the pot</legend>
             <div className="row">
-              {stakeTiersWei(token).map((s) => (
-                <button key={s.toString()} onClick={() => start(s)} style={{ flex: 1 }}>
+              {stakeTiersWei(token).map((s, i) => (
+                <button
+                  key={s.toString()}
+                  onClick={() => setTier(i)}
+                  style={{ flex: 1, fontWeight: i === tier ? 'bold' : 'normal' }}
+                  aria-pressed={i === tier}
+                >
                   <span className="win">{formatUnits(s, token.decimals)}</span> {token.symbol}
                 </button>
               ))}
             </div>
           </fieldset>
           <p className="fineprint">Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
+          {/* Selecting a tier used to send the transaction, so a row of buttons that looked
+              exactly like the currency row above it — which only selects — spent real money
+              on first tap. Committing now needs this separate, explicitly worded action. */}
+          <button onClick={() => start(stakeTiersWei(token)[tier])} style={{ width: '100%', marginTop: 8 }}>
+            Create duel — stake {formatUnits(stakeTiersWei(token)[tier], token.decimals)} {token.symbol}
+          </button>
         </Window>
       )}
       {(phase === 'approving' || phase === 'depositing' || phase === 'binding') && (
@@ -155,7 +172,7 @@ function CreateDuel() {
       )}
       {phase === 'error' && (
         <Dialog95 title="Error" onClose={() => setPhase('pick-stake')} open>
-          <p>⚠️ {error}</p>
+          {error && <ErrorReport error={error} />}
           <button onClick={() => setPhase('pick-stake')}>Try again</button>
         </Dialog95>
       )}

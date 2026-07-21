@@ -10,14 +10,18 @@ import { TxProgress } from '@/components/TxProgress';
 import { DuelResult } from '@/components/DuelResult';
 import { ESCROW_ADDRESS, duelEscrowAbi, erc20Abi, tokenByAddress } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
+import { friendlyError, type FriendlyError } from '@/lib/friendlyError';
+import { ErrorReport } from '@/components/ErrorReport';
 import { orientResult, viewerRole } from '@/lib/outcome';
 import { loadDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
+import { timeLeft } from '@/lib/duelClock';
+import { useNow } from '@/lib/useNow';
 
 type Phase = 'loading' | 'preview' | 'settled' | 'funded' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
 interface Detail {
   id: number; onchainId: string | null; status: string; stakeWei: string; token: string | null;
-  creator: string; acceptor: string | null; updatedAt: string;
+  creator: string; acceptor: string | null; createdAt: string; updatedAt: string;
   winner: 'creator' | 'acceptor' | 'tie' | null;
   creatorScore: number | null; acceptorScore: number | null;
   creatorDeathTick: number | null; acceptorDeathTick: number | null;
@@ -46,12 +50,13 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
 
+  const now = useNow();
   const [phase, setPhase] = useState<Phase>('loading');
   const [detail, setDetail] = useState<Detail | null>(null);
   const [ghost, setGhost] = useState<{ seed: number; ghostTaps: number[] } | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [reclaimKind, setReclaimKind] = useState<ReclaimKind | null>(null);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<FriendlyError | null>(null);
   // Creator-resume of a funded duel: the seed read from localStorage, whether the
   // run has been started, and the score once the finished run is recorded.
   const [resumeSeed, setResumeSeed] = useState<number | null>(null);
@@ -101,7 +106,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         // the !maybeStale block.
         if (d.status === 'funded') { setPhase('funded'); return; }
         setPhase('error');
-        setError('This duel is not open.');
+        setError({ message: 'This duel is not open.' });
         return;
       }
 
@@ -113,7 +118,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       const client = publicClientRef.current;
       if (!d.onchainId || !client) {
         setPhase('error');
-        setError('This duel has expired and its on-chain state could not be checked. Reload to try again.');
+        setError({ message: 'This duel has expired and its on-chain state could not be checked. Reload to try again.' });
         return;
       }
 
@@ -137,12 +142,12 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         // sync bumped it), so the duel really is joinable.
         if (onchainStatus === 1) { setPhase('preview'); return; }
         setPhase('error');
-        setError('This duel is not open.');
+        setError({ message: 'This duel is not open.' });
       } catch (e) {
         if (cancelled) return;
         console.error('on-chain status read failed', e);
         setPhase('error');
-        setError('Could not reach the network to check this duel. Reload to try again.');
+        setError({ message: 'Could not reach the network to check this duel. Reload to try again.' });
       }
     })();
     return () => { cancelled = true; };
@@ -157,7 +162,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   async function accept() {
     if (!detail || !address || !publicClient || !detail.onchainId) return;
     const stakeToken = detail.token ? tokenByAddress(detail.token) : undefined;
-    if (!stakeToken) { setError('Unknown stake currency.'); setPhase('error'); return; }
+    if (!stakeToken) { setError({ message: 'Unknown stake currency.' }); setPhase('error'); return; }
     const stake = BigInt(detail.stakeWei);
     try {
       setPhase('approving');
@@ -186,7 +191,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       setGhost({ seed: data.seed, ghostTaps: data.ghostTaps ?? [] });
       setPhase('playing');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong');
+      setError(friendlyError(e));
       setPhase('error');
     }
   }
@@ -211,7 +216,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       }
       router.push('/duels');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Reclaim failed');
+      setError(friendlyError(e));
       setPhase('error');
     }
   }
@@ -222,7 +227,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role: 'acceptor', taps }),
     });
-    if (!res.ok) { setError('Replay rejected'); setPhase('error'); return; }
+    if (!res.ok) { setError({ message: 'Replay rejected' }); setPhase('error'); return; }
     setOutcome(await res.json());
     setPhase('result');
   }, [id]);
@@ -233,7 +238,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ role: 'creator', taps }),
     });
-    if (!res.ok) { setError('Could not save your run. Try again.'); setPhase('error'); return; }
+    if (!res.ok) { setError({ message: 'Could not save your run. Try again.' }); setPhase('error'); return; }
     const data = await res.json();
     clearDuelSeed(localStorage, detail.id);
     setResumeScore(data.score);
@@ -244,6 +249,9 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   const stakeStr = detail ? formatUnits(BigInt(detail.stakeWei), duelToken?.decimals ?? 18) : '';
   const iWon = outcome?.winner === 'acceptor';
   const tie = outcome?.winner === 'tie';
+  // Null until the clock mounts, so the countdown line simply isn't there on first paint
+  // rather than flashing a server-rendered time that disagrees with the client's.
+  const left = detail && now !== null ? timeLeft(Date.parse(detail.createdAt), now) : null;
 
   return (
     <main className="desktop">
@@ -252,8 +260,14 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         <Window title={`DUEL_${detail.id}.EXE — yours`}>
           <p>⏳ Your duel is open, waiting for a challenger.</p>
           <p style={{ fontSize: 12 }}>Stake held: <b className="stake">{stakeStr} {symbol}</b>. Share this page&apos;s link and
-            whoever opens it can accept. You can&apos;t accept your own duel. If nobody does within 24 hours
-            of creation, come back here to reclaim your stake.</p>
+            whoever opens it can accept. You can&apos;t accept your own duel.</p>
+          {left && (
+            <p className="fineprint">
+              {left.expired
+                ? 'Nobody accepted in time. Reload this page to reclaim your stake.'
+                : `Open for another ${left.label}. After that, come back here to reclaim your stake.`}
+            </p>
+          )}
           <button onClick={() => router.push('/duels')} style={{ width: '100%' }}>Back to duels</button>
         </Window>
       )}
@@ -261,6 +275,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         <Window title={`DUEL_${detail.id}.EXE`}>
           <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{detail.creator.slice(0, 8)}…</span></p>
           <p style={{ fontSize: 12 }}>Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>
+          {left && <p className="fineprint">{left.expired ? 'This duel has expired.' : `Accept within ${left.label} — after that it expires and the stake goes back.`}</p>}
           {isConnected
             ? <button onClick={accept} style={{ width: '100%' }}>Accept duel — stake {stakeStr} {symbol}</button>
             : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
@@ -411,7 +426,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       )}
       {phase === 'error' && (
         <Dialog95 title="Error" open onClose={() => router.push('/duels')}>
-          <p>⚠️ {error}</p>
+          {error && <ErrorReport error={error} />}
           <button onClick={() => router.push('/duels')}>Back to duels</button>
         </Dialog95>
       )}

@@ -6,6 +6,8 @@ import { formatUnits } from 'viem';
 import { Window } from '@/components/Window';
 import { tokenByAddress } from '@/lib/contracts';
 import { viewerRole } from '@/lib/outcome';
+import { timeLeft } from '@/lib/duelClock';
+import { useNow } from '@/lib/useNow';
 
 interface OpenDuel { id: number; stakeWei: string; token: string | null; creator: string; challengeTo: string | null; createdAt: string }
 
@@ -16,6 +18,7 @@ function stakeLabel(d: OpenDuel): string {
 
 export default function DuelsPage() {
   const { address } = useAccount();
+  const now = useNow();
   const [duels, setDuels] = useState<OpenDuel[]>([]);
   useEffect(() => {
     const q = address ? `?viewer=${address}` : '';
@@ -33,9 +36,13 @@ export default function DuelsPage() {
               // must never look like something you can join — the revert only surfaces after
               // the ERC-20 approve has already cost the user gas.
               const mine = viewerRole(address, d.creator, null) === 'creator';
+              // A duel stops being acceptable 24h after creation, so how long is left is
+              // part of deciding whether to open it at all. Null until the clock mounts.
+              const left = now === null ? null : timeLeft(Date.parse(d.createdAt), now);
+              const who = mine ? 'yours' : `${d.creator.slice(0, 8)}…${d.challengeTo ? ' · rematch' : ''}`;
               return (
                 <tr key={d.id}>
-                  <td>⚔️ duel_{d.id}.exe<br /><small>{mine ? 'yours · waiting for challenger' : `${d.creator.slice(0, 8)}…${d.challengeTo ? ' · rematch' : ''}`}</small></td>
+                  <td>⚔️ duel_{d.id}.exe<br /><small>{who}{left && ` · ${left.expired ? 'expired' : `${left.label} left`}`}</small></td>
                   <td className="stake">{stakeLabel(d)}</td>
                   <td><Link href={`/duels/${d.id}`}><button>{mine ? 'View' : 'Open'}</button></Link></td>
                 </tr>
