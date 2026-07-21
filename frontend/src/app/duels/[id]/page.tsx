@@ -10,10 +10,18 @@ import { TxProgress } from '@/components/TxProgress';
 import { DuelResult } from '@/components/DuelResult';
 import { ESCROW_ADDRESS, duelEscrowAbi, erc20Abi, tokenByAddress } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
+import { orientResult, viewerRole } from '@/lib/outcome';
 
-type Phase = 'loading' | 'preview' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
+type Phase = 'loading' | 'preview' | 'settled' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
-interface Detail { id: number; onchainId: string | null; status: string; stakeWei: string; token: string | null; creator: string; updatedAt: string }
+interface Detail {
+  id: number; onchainId: string | null; status: string; stakeWei: string; token: string | null;
+  creator: string; acceptor: string | null; updatedAt: string;
+  winner: 'creator' | 'acceptor' | 'tie' | null;
+  creatorScore: number | null; acceptorScore: number | null;
+  creatorDeathTick: number | null; acceptorDeathTick: number | null;
+  settleTx: string | null;
+}
 interface Outcome { winner: 'creator' | 'acceptor' | 'tie'; creatorScore: number; acceptorScore: number; settleTx: string | null }
 
 /** Mirrors DuelEscrow.EXPIRY / SETTLE_TIMEOUT (both 24 hours). */
@@ -72,6 +80,11 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       // read below, which is authoritative and needs no timestamp from us. Letting NaN fall
       // through the `>` instead would silently answer "not stale" and hide the escape hatch.
       const maybeStale = !terminal && (Number.isNaN(ageMs) || ageMs > EXPIRY_MS);
+
+      // A settled duel is a result, not an error. The creator never sees their own outcome
+      // any other way — they stake, play, wait, and their only other signal that they won
+      // is noticing the balance move.
+      if (d.status === 'settled' && d.winner !== null) { setPhase('settled'); return; }
 
       if (!maybeStale) {
         // Fast path: a live duel still inside its window needs no chain read.
@@ -215,6 +228,34 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
             : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
         </Window>
       )}
+      {phase === 'settled' && detail && detail.winner !== null && (() => {
+        const oriented = orientResult(
+          viewerRole(address, detail.creator, detail.acceptor),
+          {
+            winner: detail.winner,
+            creatorScore: detail.creatorScore ?? 0,
+            acceptorScore: detail.acceptorScore ?? 0,
+            creatorDeathTick: detail.creatorDeathTick,
+            acceptorDeathTick: detail.acceptorDeathTick,
+          },
+        );
+        return (
+          <Window title={`DUEL_${detail.id}.EXE — settled`}>
+            <DuelResult
+              {...oriented}
+              amount={oriented.won ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
+              symbol={symbol}
+              settleTx={detail.settleTx}
+            />
+            <div className="row spread" style={{ marginTop: 10 }}>
+              {!oriented.observer && !oriented.won && (
+                <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
+              )}
+              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            </div>
+          </Window>
+        );
+      })()}
       {(phase === 'approving' || phase === 'accepting' || phase === 'binding') && (
         <Dialog95 title="Accepting duel…" open>
           <TxProgress
