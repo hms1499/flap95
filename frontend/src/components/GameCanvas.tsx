@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 import { CONFIG, GameSim } from '@/engine/engine';
+import { COUNTDOWN_MS, countdownLabel, onPointerDown, type RunPhase } from '@/lib/runPhase';
 
 const TICK_MS = 1000 / CONFIG.ticksPerSecond;
 
@@ -20,12 +21,21 @@ export function GameCanvas({ seed, ghostTaps, onRunEnd }: {
     const ghostSet = new Set(ghostTaps ?? []);
     const taps: number[] = [];
     let pendingTap = false;
+    let phase: RunPhase = 'idle';
+    let countdownStart = 0;
     let last = performance.now();
     let acc = 0;
     let raf = 0;
     endedRef.current = false;
 
-    const onDown = (e: Event) => { e.preventDefault(); pendingTap = true; };
+    const onDown = (e: Event) => {
+      e.preventDefault();
+      const next = onPointerDown(phase);
+      if (next.phase === 'countdown' && phase === 'idle') countdownStart = performance.now();
+      phase = next.phase;
+      // Only a tap taken while running is a flap. The starting tap is swallowed here.
+      if (next.isFlap) pendingTap = true;
+    };
     canvas.addEventListener('pointerdown', onDown);
 
     function draw() {
@@ -69,7 +79,44 @@ export function GameCanvas({ seed, ghostTaps, onRunEnd }: {
       }
     }
 
+    function drawOverlay(text: string, sub?: string) {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, CONFIG.worldW, CONFIG.worldH);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 48px monospace';
+      ctx.fillText(text, CONFIG.worldW / 2, CONFIG.worldH / 2);
+      if (sub) {
+        ctx.font = '14px monospace';
+        ctx.fillText(sub, CONFIG.worldW / 2, CONFIG.worldH / 2 + 34);
+      }
+      ctx.textAlign = 'left';
+    }
+
     function frame(now: number) {
+      // Pre-roll: draw the world frozen so the player can read the first pipes, and run
+      // no simulation ticks at all. Tick 0 happens after GO.
+      if (phase === 'idle') {
+        draw();
+        drawOverlay('TAP TO START', 'first tap starts the countdown');
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+      if (phase === 'countdown') {
+        const elapsed = now - countdownStart;
+        draw();
+        drawOverlay(countdownLabel(elapsed));
+        if (elapsed >= COUNTDOWN_MS) {
+          phase = 'running';
+          // Reset the accumulator clock so the countdown's wall time is not handed to the
+          // simulation as a backlog of ticks to catch up on.
+          last = now;
+          acc = 0;
+        }
+        raf = requestAnimationFrame(frame);
+        return;
+      }
+
       acc += now - last;
       last = now;
       while (acc >= TICK_MS && sim.state.alive) {
