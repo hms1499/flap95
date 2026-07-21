@@ -47,6 +47,10 @@ function WalletChip() {
   // client render agree (both show the static span), then upgrade after mount.
   useEffect(() => { setMounted(true); }, []);
 
+  // Clear a pending confirm if the wallet goes away by any route (revoked in the
+  // extension, locked, etc.) so it can't resurface unprompted on the next reconnect.
+  useEffect(() => { if (!isConnected) setConfirmOpen(false); }, [isConnected]);
+
   if (isConnected && address) {
     // Inside MiniPay, disconnect is meaningless — the embedded wallet hosts the
     // dapp and AutoConnect would immediately reconnect — so the chip stays a
