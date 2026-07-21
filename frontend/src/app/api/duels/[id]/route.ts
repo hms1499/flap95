@@ -12,6 +12,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     updatedAt: d.updatedAt,
     creatorScore: settled ? d.creatorScore : null,
     acceptorScore: settled ? d.acceptorScore : null,
+    creatorDeathTick: settled ? d.creatorDeathTick : null,
+    acceptorDeathTick: settled ? d.acceptorDeathTick : null,
     winner: settled ? d.winner : null,
     settleTx: settled ? d.settleTx : null,
   });
