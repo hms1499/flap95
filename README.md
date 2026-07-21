@@ -5,8 +5,8 @@ One-tap duels. Flap like it's 1995. Stake stablecoins, race the ghost, win the p
 Flap95 is a Flappy-style skill game on **Celo Mainnet** with 1v1 staked async duels:
 create a duel, stake **USDm (cUSD), USDC, or USDT** (0.1 / 0.5 / 1), play your run —
 then a challenger locks a matching stake and races your **ghost** on the exact same
-pipes. Winner takes the pot minus a 5% house fee; ties refund both players. All of it
-wrapped in a Windows 95 UI.
+pipes. Winner takes the pot minus a 5% house fee; equal scores go to whoever survived
+longer, and a dead-even run refunds both players. All of it wrapped in a Windows 95 UI.
 
 ## How it works
 
@@ -18,8 +18,13 @@ wrapped in a Windows 95 UI.
   ticks), and compute the score themselves.
 - **Oracle-signed settlement** — the backend decides the winner and signs an EIP-712
   `Settle` message; the escrow contract pays out only against that signature.
-- **Blind duels** — open listings never reveal the creator's score. The ghost is
-  revealed only after the acceptor's stake is locked on-chain.
+- **Blind duels** — open listings never reveal the creator's score, and the ghost race
+  never shows the ghost's score either. You can watch the grey bird, but the number stays
+  hidden until you finish — so neither side gets a free read on the target.
+- **Ties break on survival time** — equal scores go to whoever stayed alive longer. Only a
+  run matching on both counts refunds both players. Survival time is off-chain, so a duel
+  settled this way shows equal scores in the `DuelSettled` event; the winner is whoever
+  lasted more ticks.
 
 ## Contract
 
