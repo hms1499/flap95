@@ -2,8 +2,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAccount, useConnect } from 'wagmi';
+import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { PixelBird } from './PixelBird';
+import { Dialog95 } from './Dialog95';
+import { isMiniPay } from '@/lib/minipay';
 
 const NAV = [
   { href: '/play', ico: '🐤', label: 'Play', file: 'PRACTICE.EXE' },
@@ -37,12 +39,41 @@ function Clock() {
 function WalletChip() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
+  const { disconnect } = useDisconnect();
+  const [mounted, setMounted] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  // isMiniPay() reads window.ethereum, which is absent during SSR. Gate the
+  // interactive chip behind a mount flag so the server render and the first
+  // client render agree (both show the static span), then upgrade after mount.
+  useEffect(() => { setMounted(true); }, []);
+
   if (isConnected && address) {
+    // Inside MiniPay, disconnect is meaningless — the embedded wallet hosts the
+    // dapp and AutoConnect would immediately reconnect — so the chip stays a
+    // static, non-interactive label there and before hydration.
+    if (!mounted || isMiniPay()) {
+      return (
+        <span className="wallet-chip is-live" title={address}>
+          <span className="dot" />
+          {address.slice(0, 4)}…{address.slice(-2)}
+        </span>
+      );
+    }
     return (
-      <span className="wallet-chip is-live" title={address}>
-        <span className="dot" />
-        {address.slice(0, 4)}…{address.slice(-2)}
-      </span>
+      <>
+        <button className="wallet-chip is-live" title={address} onClick={() => setConfirmOpen(true)}>
+          <span className="dot" />
+          {address.slice(0, 4)}…{address.slice(-2)}
+        </button>
+        <Dialog95 title="Disconnect" open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+          <p>⚠️ Disconnect wallet?</p>
+          <p className="mono">{address}</p>
+          <div className="row spread" style={{ marginTop: 10 }}>
+            <button onClick={() => { disconnect(); setConfirmOpen(false); }}>Disconnect</button>
+            <button onClick={() => setConfirmOpen(false)}>Cancel</button>
+          </div>
+        </Dialog95>
+      </>
     );
   }
   return (
