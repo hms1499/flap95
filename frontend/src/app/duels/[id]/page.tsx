@@ -11,8 +11,9 @@ import { DuelResult } from '@/components/DuelResult';
 import { ESCROW_ADDRESS, duelEscrowAbi, erc20Abi, tokenByAddress } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 import { orientResult, viewerRole } from '@/lib/outcome';
+import { loadDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
 
-type Phase = 'loading' | 'preview' | 'settled' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
+type Phase = 'loading' | 'preview' | 'settled' | 'funded' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
 interface Detail {
   id: number; onchainId: string | null; status: string; stakeWei: string; token: string | null;
@@ -51,6 +52,11 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [reclaimKind, setReclaimKind] = useState<ReclaimKind | null>(null);
   const [error, setError] = useState('');
+  // Creator-resume of a funded duel: the seed read from localStorage, whether the
+  // run has been started, and the score once the finished run is recorded.
+  const [resumeSeed, setResumeSeed] = useState<number | null>(null);
+  const [resumeStarted, setResumeStarted] = useState(false);
+  const [resumeScore, setResumeScore] = useState<number | null>(null);
 
   // Held in a ref rather than named as an effect dependency. The loader below must run
   // exactly once per duel id: it owns `phase`, and re-running it mid-flight resets that out
@@ -89,6 +95,11 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       if (!maybeStale) {
         // Fast path: a live duel still inside its window needs no chain read.
         if (d.status === 'open') { setPhase('preview'); return; }
+        // A funded duel is one the creator staked but never finished the run for.
+        // Only fresh ones resume here; an old funded duel is maybeStale and must
+        // fall through to the cancelExpired refund path below, so this stays inside
+        // the !maybeStale block.
+        if (d.status === 'funded') { setPhase('funded'); return; }
         setPhase('error');
         setError('This duel is not open.');
         return;
@@ -136,6 +147,12 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
     })();
     return () => { cancelled = true; };
   }, [id]);
+
+  // localStorage is client-only, so read the stashed seed in an effect (not during
+  // render) to avoid a hydration mismatch. Runs once the funded phase is entered.
+  useEffect(() => {
+    if (phase === 'funded' && detail) setResumeSeed(loadDuelSeed(localStorage, detail.id));
+  }, [phase, detail]);
 
   async function accept() {
     if (!detail || !address || !publicClient || !detail.onchainId) return;
@@ -210,6 +227,18 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
     setPhase('result');
   }, [id]);
 
+  const onCreatorRunEnd = useCallback(async (taps: number[]) => {
+    if (!detail) return;
+    const res = await fetch(`/api/duels/${detail.id}/replay`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role: 'creator', taps }),
+    });
+    if (!res.ok) { setError('Could not save your run. Try again.'); setPhase('error'); return; }
+    const data = await res.json();
+    clearDuelSeed(localStorage, detail.id);
+    setResumeScore(data.score);
+  }, [detail]);
+
   const duelToken = detail?.token ? tokenByAddress(detail.token) : undefined;
   const symbol = duelToken?.symbol ?? 'USDm';
   const stakeStr = detail ? formatUnits(BigInt(detail.stakeWei), duelToken?.decimals ?? 18) : '';
@@ -253,6 +282,49 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
               )}
               <button onClick={() => router.push('/duels')}>Back to duels</button>
             </div>
+          </Window>
+        );
+      })()}
+      {phase === 'funded' && detail && (() => {
+        const role = viewerRole(address, detail.creator, detail.acceptor);
+        if (role !== 'creator') {
+          return (
+            <Window title={`DUEL_${detail.id}.EXE`}>
+              <p>This duel isn&apos;t open yet — its creator hasn&apos;t finished their run.</p>
+              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            </Window>
+          );
+        }
+        if (resumeScore !== null) {
+          return (
+            <Window title={`DUEL_${detail.id}.EXE — run saved`}>
+              <p>✅ Your run is in (score {resumeScore}). The duel is now open for challengers.</p>
+              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            </Window>
+          );
+        }
+        if (resumeSeed === null) {
+          return (
+            <Window title={`DUEL_${detail.id}.EXE — unfinished`}>
+              <p style={{ fontSize: 12 }}>⚠️ You funded this duel but didn&apos;t finish your run, and
+                the game can&apos;t be recovered on this device. Your {stakeStr} {symbol} stake can be
+                reclaimed 24 hours after creation — reopen this page then to refund it.</p>
+              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            </Window>
+          );
+        }
+        if (resumeStarted) {
+          return (
+            <Window title={`DUEL_${detail.id}.EXE — finish your run`}>
+              <GameCanvas seed={resumeSeed} onRunEnd={onCreatorRunEnd} />
+            </Window>
+          );
+        }
+        return (
+          <Window title={`DUEL_${detail.id}.EXE — finish your run`}>
+            <p style={{ fontSize: 12 }}>You funded this duel but never finished your run. Play it now
+              to open it for challengers.</p>
+            <button onClick={() => setResumeStarted(true)} style={{ width: '100%' }}>Finish your run</button>
           </Window>
         );
       })()}
