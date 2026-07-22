@@ -7,6 +7,8 @@ import { normalizeName, setNameMessage } from '@/lib/profile';
 import { formatStake } from '@/lib/contracts';
 import { useNames, displayName } from '@/lib/useNames';
 import { viewerRole } from '@/lib/outcome';
+import { activeLabel } from '@/lib/profileDuels';
+import { useNow } from '@/lib/useNow';
 import type { MeDuel } from '@/lib/meWire';
 
 export interface Me {
@@ -15,13 +17,6 @@ export interface Me {
   active: MeDuel[];
   history: MeDuel[];
 }
-
-const ACTIVE_LABEL: Record<string, string> = {
-  funded: 'Finish your run',
-  open: 'Waiting for an opponent',
-  accepted: 'Opponent is playing',
-  settling: 'Settling…',
-};
 
 /** What a finished duel meant for this viewer. Cancelled duels have no winner. */
 function outcomeLabel(d: MeDuel, address: string | undefined): string {
@@ -36,6 +31,7 @@ export default function ProfilePage() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
   const { signMessageAsync } = useSignMessage();
+  const now = useNow();
 
   const [me, setMe] = useState<Me | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -49,31 +45,40 @@ export default function ProfilePage() {
     ...(me?.history ?? []).flatMap((d) => [d.creator, d.acceptor]),
   ]);
 
-  function opponentOf(d: MeDuel): string {
+  /** The other party's display name, or null when nobody ever joined. */
+  function opponentOf(d: MeDuel): string | null {
     const a = address?.toLowerCase();
     const other = d.creator.toLowerCase() === a ? d.acceptor : d.creator;
-    return other ? displayName(names, other) : 'nobody yet';
+    return other ? displayName(names, other) : null;
   }
 
   const record = (me?.history ?? []).filter((d) => d.status === 'settled');
   const wins = record.filter((d) => outcomeLabel(d, address) === 'Won').length;
   const losses = record.filter((d) => outcomeLabel(d, address) === 'Lost').length;
 
-  const load = useCallback(async () => {
+  // `stale` lets the effect below disown a request whose wallet is no longer the
+  // connected one: switching wallets quickly could otherwise land A's duels and best
+  // score under B's address. Mirrors useNames and the duel page.
+  const load = useCallback(async (stale?: () => boolean) => {
     if (!address) return;
     setLoadError(false);
     try {
       const res = await fetch(`/api/me?address=${address}`);
       if (!res.ok) throw new Error('bad status');
-      setMe(await res.json());
+      const data = await res.json();
+      if (stale?.()) return;
+      setMe(data);
     } catch {
+      if (stale?.()) return;
       setLoadError(true);
     }
   }, [address]);
 
   useEffect(() => {
+    let cancelled = false;
     setMe(null);
-    void load();
+    void load(() => cancelled);
+    return () => { cancelled = true; };
   }, [load]);
 
   async function rename() {
@@ -141,7 +146,9 @@ export default function ProfilePage() {
               <div className="row">
                 <input
                   placeholder="New name" value={draftName} maxLength={16}
-                  onChange={(e) => setDraftName(e.target.value)}
+                  // Clear both notices: "Saved." under a half-typed new name claims
+                  // something that has not happened yet.
+                  onChange={(e) => { setDraftName(e.target.value); setSaved(false); setError(null); }}
                 />
                 <button onClick={rename} disabled={busy || !draftName.trim()}>
                   {busy ? 'Signing…' : 'Save name'}
@@ -173,7 +180,7 @@ export default function ProfilePage() {
                     <td>
                       ⚔️ duel_{d.id}.exe<br />
                       <small className={d.status === 'funded' ? 'win' : undefined}>
-                        {ACTIVE_LABEL[d.status] ?? d.status} · vs {opponentOf(d)}
+                        {activeLabel(d.status, Date.parse(d.createdAt), now)} · vs {opponentOf(d) ?? 'nobody yet'}
                       </small>
                     </td>
                     <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
@@ -202,7 +209,9 @@ export default function ProfilePage() {
                     <tr key={d.id}>
                       <td>
                         ⚔️ duel_{d.id}.exe<br />
-                        <small>vs {opponentOf(d)}</small>
+                        {/* A duel nobody accepted has no opponent to name — "vs nobody yet"
+                            is phrased for the active list and reads oddly once it is over. */}
+                        <small>{opponentOf(d) ? `vs ${opponentOf(d)}` : 'Nobody accepted'}</small>
                       </td>
                       <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
                       <td>
