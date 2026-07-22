@@ -7,18 +7,8 @@ import { normalizeName, setNameMessage } from '@/lib/profile';
 import { formatStake } from '@/lib/contracts';
 import { useNames, displayName } from '@/lib/useNames';
 import { viewerRole } from '@/lib/outcome';
+import type { MeDuel } from '@/lib/meWire';
 
-export interface MeDuel {
-  id: number;
-  status: string;
-  stakeWei: string | null;
-  token: string | null;
-  creator: string;
-  acceptor: string | null;
-  winner: 'creator' | 'acceptor' | 'tie' | null;
-  settleTx: string | null;
-  createdAt: string;
-}
 export interface Me {
   name: string | null;
   bestScore: number | null;
@@ -133,17 +123,21 @@ export default function ProfilePage() {
             <p>⚠️ Could not load your profile.</p>
             <button onClick={() => void load()}>Try again</button>
           </>
+        ) : me === null ? (
+          // Not the same as "no name / no duels": this page exists to tell people they have
+          // money stuck in escrow, so it must never answer "nothing here" before it knows.
+          <p>Loading…</p>
         ) : (
           <>
             <p>
-              👤 <b>{me?.name ?? 'No name yet'}</b>
-              {me?.bestScore !== null && me?.bestScore !== undefined && (
+              👤 <b>{me.name ?? 'No name yet'}</b>
+              {me.bestScore !== null && (
                 <> · best practice score <b>{me.bestScore}</b></>
               )}
             </p>
             <p className="mono fineprint">{address}</p>
             <fieldset>
-              <legend>{me?.name ? 'Change your name' : 'Pick your name'}</legend>
+              <legend>{me.name ? 'Change your name' : 'Pick your name'}</legend>
               <div className="row">
                 <input
                   placeholder="New name" value={draftName} maxLength={16}
@@ -166,13 +160,15 @@ export default function ProfilePage() {
 
       {!loadError && (
         <Window title="UNFINISHED.LST">
-          {(me?.active ?? []).length === 0 ? (
+          {me === null ? (
+            <p className="fineprint">Loading…</p>
+          ) : me.active.length === 0 ? (
             <p className="fineprint">Nothing unfinished. <Link href="/duels/new">Start a duel</Link>.</p>
           ) : (
             <table className="ledger">
               <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
               <tbody>
-                {me!.active.map((d) => (
+                {me.active.map((d) => (
                   <tr key={d.id}>
                     <td>
                       ⚔️ duel_{d.id}.exe<br />
@@ -192,7 +188,9 @@ export default function ProfilePage() {
 
       {!loadError && (
         <Window title="HISTORY.LOG">
-          {(me?.history ?? []).length === 0 ? (
+          {me === null ? (
+            <p className="fineprint">Loading…</p>
+          ) : me.history.length === 0 ? (
             <p className="fineprint">No finished duels yet.</p>
           ) : (
             <>
@@ -200,7 +198,7 @@ export default function ProfilePage() {
               <table className="ledger">
                 <thead><tr><th>Duel</th><th>Stake</th><th>Result</th></tr></thead>
                 <tbody>
-                  {me!.history.map((d) => (
+                  {me.history.map((d) => (
                     <tr key={d.id}>
                       <td>
                         ⚔️ duel_{d.id}.exe<br />
