@@ -19,6 +19,11 @@ create table if not exists duels (
 );
 create index if not exists duels_status_idx on duels (status);
 create index if not exists duels_status_updated_idx on duels (status, updated_at);
+-- listDuelsForAddress (/api/me) matches `creator = $1 or acceptor = $1`; Postgres BitmapOrs
+-- these two. Unindexed it is a seq scan plus a full sort on every call, and /api/me needs no
+-- signature, so anyone could drive that scan as fast as they can issue requests.
+create index if not exists duels_creator_created_idx on duels (creator, created_at desc);
+create index if not exists duels_acceptor_created_idx on duels (acceptor, created_at desc);
 
 -- Survival time in engine ticks (60/s), used to break tied scores.
 -- Nullable on purpose: rows that predate these columns settle under the score-only rule.

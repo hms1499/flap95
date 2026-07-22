@@ -222,13 +222,19 @@ export async function listOpenDuels(viewer?: string): Promise<DuelRow[]> {
 }
 
 /**
- * Every duel a wallet took part in, newest first.
+ * Every duel a wallet took part in: unfinished ones first, then newest first.
  *
  * Taps and scores are nulled for EVERY row, not just unfinished ones: the
  * profile page renders outcomes from `winner`, never from scores, so there is
  * no reason to put an opponent's score on the wire. Keeping this
  * unconditional means the no-sniping rule cannot regress by someone editing a
  * status condition.
+ *
+ * The unfinished-first sort exists because of the 100-row cap. Sorting on
+ * created_at alone lets a long history evict the oldest rows — and a duel is
+ * unfinished precisely because it got old and stuck, so the cap would hide the
+ * stakes this page exists to surface. The status list mirrors the 'active'
+ * entries in STATUS_ROUTE (lib/profileDuels.ts).
  */
 export async function listDuelsForAddress(address: string): Promise<DuelRow[]> {
   const rows = await sql`
@@ -237,6 +243,7 @@ export async function listDuelsForAddress(address: string): Promise<DuelRow[]> {
            null as creator_taps, null as creator_score, null as acceptor_taps, null as acceptor_score
     from duels
     where creator = ${address} or acceptor = ${address}
-    order by created_at desc limit 100`;
+    order by (status in ('funded', 'open', 'accepted', 'settling')) desc, created_at desc
+    limit 100`;
   return rows.map(toRow);
 }
