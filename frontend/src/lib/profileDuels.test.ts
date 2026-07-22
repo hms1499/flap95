@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { splitDuels } from './profileDuels';
+import { splitDuels, activeLabel } from './profileDuels';
+import { EXPIRY_MS } from './duelClock';
 import type { DuelRow } from './duelStore';
 
 function row(id: number, status: DuelRow['status']): DuelRow {
@@ -40,5 +41,43 @@ describe('splitDuels', () => {
 
   it('handles an empty list', () => {
     expect(splitDuels([])).toEqual({ active: [], history: [] });
+  });
+});
+
+describe('activeLabel', () => {
+  const created = Date.parse('2026-07-22T00:00:00.000Z');
+  const fresh = created + 60_000;
+  const old = created + EXPIRY_MS + 60_000;
+
+  it('describes a fresh duel by what the viewer is waiting on', () => {
+    expect(activeLabel('funded', created, fresh)).toBe('Finish your run');
+    expect(activeLabel('open', created, fresh)).toBe('Waiting for an opponent');
+    expect(activeLabel('accepted', created, fresh)).toBe('Opponent is playing');
+    expect(activeLabel('settling', created, fresh)).toBe('Settling…');
+  });
+
+  it('offers the reclaim once a stake nobody accepted has expired', () => {
+    // cancelExpired is gated on createdAt + EXPIRY, exactly the clock used here,
+    // so this promise is one the contract will keep.
+    expect(activeLabel('funded', created, old)).toBe('Expired — reclaim your stake');
+    expect(activeLabel('open', created, old)).toBe('Expired — reclaim your stake');
+  });
+
+  it('only says "check" for a stuck duel, never "refund available"', () => {
+    // refundStale runs off the on-chain acceptedAt, which is later than createdAt and
+    // is not on the wire. Promising a refund from this clock could promise it early.
+    expect(activeLabel('accepted', created, old)).toBe('Taking too long — open to check');
+    expect(activeLabel('settling', created, old)).toBe('Taking too long — open to check');
+  });
+
+  it('falls back to the fresh label when the clock is unknown', () => {
+    // now is null until the client mounts, and a bad timestamp must not age anything.
+    expect(activeLabel('open', created, null)).toBe('Waiting for an opponent');
+    expect(activeLabel('open', NaN, old)).toBe('Waiting for an opponent');
+  });
+
+  it('never ages a status that has no active label', () => {
+    expect(activeLabel('settled', created, old)).toBe('settled');
+    expect(activeLabel('draft', created, old)).toBe('draft');
   });
 });
