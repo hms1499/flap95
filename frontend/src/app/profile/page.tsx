@@ -1,8 +1,12 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { useAccount, useConnect, useSignMessage } from 'wagmi';
+import Link from 'next/link';
 import { Window } from '@/components/Window';
 import { normalizeName, setNameMessage } from '@/lib/profile';
+import { formatStake } from '@/lib/contracts';
+import { useNames, displayName } from '@/lib/useNames';
+import { viewerRole } from '@/lib/outcome';
 
 export interface MeDuel {
   id: number;
@@ -22,6 +26,22 @@ export interface Me {
   history: MeDuel[];
 }
 
+const ACTIVE_LABEL: Record<string, string> = {
+  funded: 'Finish your run',
+  open: 'Waiting for an opponent',
+  accepted: 'Opponent is playing',
+  settling: 'Settling…',
+};
+
+/** What a finished duel meant for this viewer. Cancelled duels have no winner. */
+function outcomeLabel(d: MeDuel, address: string | undefined): string {
+  if (d.status === 'cancelled') return 'Refunded';
+  if (d.winner === 'tie') return 'Tie';
+  const role = viewerRole(address, d.creator, d.acceptor);
+  if (role === 'observer' || d.winner === null) return '—';
+  return d.winner === role ? 'Won' : 'Lost';
+}
+
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
@@ -33,6 +53,21 @@ export default function ProfilePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const names = useNames([
+    ...(me?.active ?? []).flatMap((d) => [d.creator, d.acceptor]),
+    ...(me?.history ?? []).flatMap((d) => [d.creator, d.acceptor]),
+  ]);
+
+  function opponentOf(d: MeDuel): string {
+    const a = address?.toLowerCase();
+    const other = d.creator.toLowerCase() === a ? d.acceptor : d.creator;
+    return other ? displayName(names, other) : 'nobody yet';
+  }
+
+  const record = (me?.history ?? []).filter((d) => d.status === 'settled');
+  const wins = record.filter((d) => outcomeLabel(d, address) === 'Won').length;
+  const losses = record.filter((d) => outcomeLabel(d, address) === 'Lost').length;
 
   const load = useCallback(async () => {
     if (!address) return;
@@ -128,6 +163,64 @@ export default function ProfilePage() {
           </>
         )}
       </Window>
+
+      {!loadError && (
+        <Window title="UNFINISHED.LST">
+          {(me?.active ?? []).length === 0 ? (
+            <p className="fineprint">Nothing unfinished. <Link href="/duels/new">Start a duel</Link>.</p>
+          ) : (
+            <table className="ledger">
+              <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
+              <tbody>
+                {me!.active.map((d) => (
+                  <tr key={d.id}>
+                    <td>
+                      ⚔️ duel_{d.id}.exe<br />
+                      <small className={d.status === 'funded' ? 'win' : undefined}>
+                        {ACTIVE_LABEL[d.status] ?? d.status} · vs {opponentOf(d)}
+                      </small>
+                    </td>
+                    <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
+                    <td><Link href={`/duels/${d.id}`}><button>Open</button></Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Window>
+      )}
+
+      {!loadError && (
+        <Window title="HISTORY.LOG">
+          {(me?.history ?? []).length === 0 ? (
+            <p className="fineprint">No finished duels yet.</p>
+          ) : (
+            <>
+              <p className="fineprint">Record: {wins}W – {losses}L</p>
+              <table className="ledger">
+                <thead><tr><th>Duel</th><th>Stake</th><th>Result</th></tr></thead>
+                <tbody>
+                  {me!.history.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        ⚔️ duel_{d.id}.exe<br />
+                        <small>vs {opponentOf(d)}</small>
+                      </td>
+                      <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
+                      <td>
+                        {outcomeLabel(d, address)}
+                        {d.settleTx && (
+                          <> · <a href={`https://celoscan.io/tx/${d.settleTx}`} target="_blank" rel="noreferrer">tx</a></>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </Window>
+      )}
     </main>
   );
 }

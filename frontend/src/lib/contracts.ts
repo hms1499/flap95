@@ -1,3 +1,5 @@
+import { formatUnits } from 'viem';
+
 export const ESCROW_ADDRESS = process.env.NEXT_PUBLIC_ESCROW_ADDRESS as `0x${string}`;
 export const USDM_ADDRESS = (process.env.NEXT_PUBLIC_USDM_ADDRESS ??
   '0x765DE816845861e75A25fCA122bb6898B8B1282a') as `0x${string}`;
@@ -74,6 +76,13 @@ export const duelEscrowAbi = [
   { type: 'event', name: 'DuelRefunded', inputs: [
       { name: 'id', type: 'uint256', indexed: true }] },
 ] as const;
+
+/** Human-readable stake, e.g. "0.5 cUSD". Falls back to "—" for unfunded rows. */
+export function formatStake(stakeWei: string | null, token: string | null): string {
+  if (!stakeWei) return '—';
+  const t = token ? tokenByAddress(token) : undefined;
+  return `${formatUnits(BigInt(stakeWei), t?.decimals ?? 18)} ${t?.symbol ?? 'USDm'}`;
+}
 
 export const erc20Abi = [
   { type: 'function', name: 'approve', stateMutability: 'nonpayable',
