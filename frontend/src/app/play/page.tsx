@@ -22,18 +22,26 @@ export default function PlayPage() {
 
   // Every run plays a seed the server issued. A browser-chosen seed could be
   // solved offline before the run was ever played.
-  const loadSeed = useCallback(async () => {
-    setSeed(null);
-    try {
-      const res = await fetch('/api/practice/seed');
-      if (!res.ok) throw new Error('bad status');
-      setSeed(await res.json());
-    } catch {
-      setError('Could not start a round. Check your connection and try again.');
-    }
-  }, []);
-
-  useEffect(() => { void loadSeed(); }, [loadSeed]);
+  //
+  // The fetch lives inside the effect rather than in a useCallback the effect
+  // calls: the callback form made the linter see a setState reachable from an
+  // effect body, and inlining it also buys the cancellation flag this page was
+  // missing — a slow seed request landing after "Play again" would otherwise
+  // overwrite the newer round's seed.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch('/api/practice/seed');
+        if (!res.ok) throw new Error('bad status');
+        const next = await res.json();
+        if (!cancelled) setSeed(next);
+      } catch {
+        if (!cancelled) setError('Could not start a round. Check your connection and try again.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [runKey]);
 
   useEffect(() => {
     setProfileName(null);
@@ -66,9 +74,11 @@ export default function PlayPage() {
     }
   }
 
-  async function again() {
-    setResult(null); setSaved(false); setError(null);
-    await loadSeed();
+  function again() {
+    // Bumping runKey does double duty: it remounts the canvas for a fresh run
+    // and re-runs the seed effect above, so a new round always plays a seed the
+    // server issued for it.
+    setResult(null); setSaved(false); setError(null); setSeed(null);
     setRunKey((k) => k + 1);
   }
 
