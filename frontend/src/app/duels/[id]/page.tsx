@@ -16,6 +16,7 @@ import { orientResult, viewerRole } from '@/lib/outcome';
 import { loadDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
 import { timeLeft } from '@/lib/duelClock';
 import { useNow } from '@/lib/useNow';
+import { useNames, displayName } from '@/lib/useNames';
 
 type Phase = 'loading' | 'preview' | 'settled' | 'funded' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
@@ -62,6 +63,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
   const [resumeSeed, setResumeSeed] = useState<number | null>(null);
   const [resumeStarted, setResumeStarted] = useState(false);
   const [resumeScore, setResumeScore] = useState<number | null>(null);
+  const names = useNames([detail?.creator]);
 
   // Held in a ref rather than named as an effect dependency. The loader below must run
   // exactly once per duel id: it owns `phase`, and re-running it mid-flight resets that out
@@ -273,7 +275,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       )}
       {phase === 'preview' && detail && viewerRole(address, detail.creator, detail.acceptor) !== 'creator' && (
         <Window title={`DUEL_${detail.id}.EXE`}>
-          <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{detail.creator.slice(0, 8)}…</span></p>
+          <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{displayName(names, detail.creator)}</span></p>
           <p style={{ fontSize: 12 }}>Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>
           {left && <p className="fineprint">{left.expired ? 'This duel has expired.' : `Accept within ${left.label} — after that it expires and the stake goes back.`}</p>}
           {isConnected
@@ -407,7 +409,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
           <p>⚠️ Nobody accepted this duel within 24 hours, so it has expired.</p>
           <p style={{ fontSize: 12 }}>
             Cancelling it returns the <span className="stake">{stakeStr} {symbol}</span> stake to the creator
-            (<span className="mono">{detail.creator.slice(0, 8)}…</span>). No opponent ever staked, so that is
+            (<span className="mono">{displayName(names, detail.creator)}</span>). No opponent ever staked, so that is
             the only stake held. Anyone can trigger this — the refund goes to the creator either way.
           </p>
           {isConnected

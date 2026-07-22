@@ -12,6 +12,7 @@ import { feeCurrencyOverrides } from '@/lib/minipay';
 import { friendlyError, type FriendlyError } from '@/lib/friendlyError';
 import { ErrorReport } from '@/components/ErrorReport';
 import { saveDuelSeed, clearDuelSeed } from '@/lib/duelSeedStore';
+import { useNames, displayName } from '@/lib/useNames';
 
 type Phase = 'pick-stake' | 'approving' | 'depositing' | 'binding' | 'playing' | 'submitting' | 'done' | 'error';
 
@@ -33,6 +34,7 @@ function CreateDuel() {
   const [error, setError] = useState<FriendlyError | null>(null);
   const [duel, setDuel] = useState<{ id: number; seed: number } | null>(null);
   const [finalScore, setFinalScore] = useState<number | null>(null);
+  const names = useNames([challenge]);
 
   async function start(stake: bigint) {
     if (!address || !publicClient) return;
@@ -105,7 +107,7 @@ function CreateDuel() {
     <>
       {phase === 'pick-stake' && (
         <Window title="NEWDUEL.EXE — pick your stake">
-          {challenge && <p className="fineprint">Rematch challenge vs <span className="mono">{challenge.slice(0, 8)}…</span></p>}
+          {challenge && <p className="fineprint">Rematch challenge vs <span className="mono">{displayName(names, challenge)}</span></p>}
           <fieldset>
             <legend>Currency</legend>
             <div className="row">

@@ -8,6 +8,7 @@ import { tokenByAddress } from '@/lib/contracts';
 import { viewerRole } from '@/lib/outcome';
 import { timeLeft } from '@/lib/duelClock';
 import { useNow } from '@/lib/useNow';
+import { useNames, displayName } from '@/lib/useNames';
 
 interface OpenDuel { id: number; stakeWei: string; token: string | null; creator: string; challengeTo: string | null; createdAt: string }
 
@@ -24,6 +25,7 @@ export default function DuelsPage() {
     const q = address ? `?viewer=${address}` : '';
     fetch(`/api/duels${q}`).then((r) => r.json()).then((d) => setDuels(d.duels ?? []));
   }, [address]);
+  const names = useNames(duels.map((d) => d.creator));
 
   return (
     <main className="desktop">
@@ -39,7 +41,7 @@ export default function DuelsPage() {
               // A duel stops being acceptable 24h after creation, so how long is left is
               // part of deciding whether to open it at all. Null until the clock mounts.
               const left = now === null ? null : timeLeft(Date.parse(d.createdAt), now);
-              const who = mine ? 'yours' : `${d.creator.slice(0, 8)}…${d.challengeTo ? ' · rematch' : ''}`;
+              const who = mine ? 'yours' : `${displayName(names, d.creator)}${d.challengeTo ? ' · rematch' : ''}`;
               return (
                 <tr key={d.id}>
                   <td>⚔️ duel_{d.id}.exe<br /><small>{who}{left && ` · ${left.expired ? 'expired' : `${left.label} left`}`}</small></td>
