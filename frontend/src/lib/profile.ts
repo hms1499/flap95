@@ -1,4 +1,4 @@
-import { keccak256, stringToHex } from 'viem';
+import { keccak256, stringToHex, verifyMessage, type Address, type Hex } from 'viem';
 
 /** Trimmed, 1–16 chars: Unicode letters/digits (Vietnamese names work), space, _ . - */
 const NAME_RE = /^[\p{L}\p{N} _.\-]{1,16}$/u;
@@ -24,4 +24,25 @@ export function setNameMessage(name: string, timestamp: number): string {
 
 export function practiceMessage(seed: number, tapsHashHex: string, timestamp: number): string {
   return `flap95 practice seed:${seed} taps:${tapsHashHex} ts:${timestamp}`;
+}
+
+/**
+ * EOA-only (pure ecrecover): smart-contract wallets can't sign here.
+ * Acceptable for MiniPay and browser extension wallets — see spec.
+ */
+export async function verifySignedAction(args: {
+  address: string;
+  message: string;
+  signature: string;
+  timestamp: number;
+  now?: number;
+}): Promise<'ok' | 'stale' | 'bad_signature'> {
+  const now = args.now ?? Date.now();
+  if (!Number.isFinite(args.timestamp) || Math.abs(now - args.timestamp) > SIG_FRESH_MS) return 'stale';
+  const valid = await verifyMessage({
+    address: args.address as Address,
+    message: args.message,
+    signature: args.signature as Hex,
+  }).catch(() => false);
+  return valid ? 'ok' : 'bad_signature';
 }
