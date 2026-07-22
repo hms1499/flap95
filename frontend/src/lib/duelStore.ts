@@ -220,13 +220,3 @@ export async function listOpenDuels(viewer?: string): Promise<DuelRow[]> {
     order by created_at desc limit 50`;
   return rows.map(toRow);
 }
-
-export async function addPracticeScore(name: string, score: number): Promise<void> {
-  await sql`insert into practice_scores (name, score) values (${name.slice(0, 16)}, ${score})`;
-}
-
-export async function topPracticeScores(): Promise<{ name: string; score: number }[]> {
-  const rows = await sql`select name, max(score) as score from practice_scores
-    group by name order by score desc limit 20`;
-  return rows.map((r) => ({ name: r.name as string, score: Number(r.score) }));
-}
