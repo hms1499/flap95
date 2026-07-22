@@ -6,7 +6,7 @@ const NAME_RE = /^[\p{L}\p{N} _.\-]{1,16}$/u;
 export function normalizeName(
   raw: string,
 ): { ok: true; name: string } | { ok: false; error: 'bad_name' } {
-  const name = raw.trim();
+  const name = raw.normalize('NFC').trim();
   if (!NAME_RE.test(name)) return { ok: false, error: 'bad_name' };
   return { ok: true, name };
 }

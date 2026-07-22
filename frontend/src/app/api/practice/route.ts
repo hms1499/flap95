@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { verifyRun } from '@/engine/verify';
 import { practiceMessage, tapsHash, verifySignedAction } from '@/lib/profile';
 import { getName, upsertBest, topScores } from '@/lib/profileStore';
+import { CONFIG } from '@/engine/engine';
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
@@ -9,7 +10,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'bad input' }, { status: 400 });
   const { address, seed, taps, timestamp, signature } = body;
   if (
-    typeof address !== 'string' || typeof seed !== 'number' || !Array.isArray(taps) ||
+    typeof address !== 'string' || typeof seed !== 'number' ||
+    !Array.isArray(taps) || taps.length > CONFIG.maxTaps ||
     typeof timestamp !== 'number' || typeof signature !== 'string'
   )
     return NextResponse.json({ error: 'bad input' }, { status: 400 });

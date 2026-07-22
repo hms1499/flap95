@@ -26,6 +26,11 @@ describe('normalizeName', () => {
   it('rejects control characters', () => {
     expect(normalizeName('a\nb').ok).toBe(false);
   });
+  it('accepts a decomposed (NFD) Vietnamese name by normalizing it', () => {
+    const nfd = 'Việt Anh'.normalize('NFD');
+    expect(nfd.length).toBe(10);
+    expect(normalizeName(nfd)).toEqual({ ok: true, name: 'Việt Anh' });
+  });
 });
 
 describe('message formats', () => {

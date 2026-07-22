@@ -14,6 +14,7 @@ export default function PlayPage() {
   const [result, setResult] = useState<{ taps: number[]; score: number } | null>(null);
   const [name, setName] = useState('');
   const [profileName, setProfileName] = useState<string | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,12 +25,13 @@ export default function PlayPage() {
 
   useEffect(() => {
     setProfileName(null);
+    setProfileLoaded(false);
     if (!address) return;
     let stale = false;
     fetch(`/api/profile?address=${address}`)
       .then((r) => r.json())
-      .then((d) => { if (!stale) setProfileName(d.name ?? null); })
-      .catch(() => {});
+      .then((d) => { if (!stale) { setProfileName(d.name ?? null); setProfileLoaded(true); } })
+      .catch(() => { if (!stale) setError('Could not check your profile. Try again.'); });
     return () => { stale = true; };
   }, [address]);
 
@@ -37,6 +39,7 @@ export default function PlayPage() {
 
   async function save() {
     if (!result || !address) return;
+    if (!profileLoaded) return;
     setError(null);
     setBusy(true);
     try {
@@ -89,14 +92,14 @@ export default function PlayPage() {
           </button>
         ) : (
           <div className="row">
-            {!profileName && (
+            {profileLoaded && !profileName && (
               <input
                 placeholder="Your name" value={name} maxLength={16}
                 onChange={(e) => setName(e.target.value)}
               />
             )}
-            <button onClick={save} disabled={busy || (!profileName && !name.trim())}>
-              {busy ? 'Signing…' : profileName ? `Save as ${profileName}` : 'Save score'}
+            <button onClick={save} disabled={busy || !profileLoaded || (!profileName && !name.trim())}>
+              {busy ? 'Signing…' : !profileLoaded ? 'Checking…' : profileName ? `Save as ${profileName}` : 'Save score'}
             </button>
           </div>
         )}
