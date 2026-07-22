@@ -1015,11 +1015,21 @@ export async function topScores(): Promise<{ address: string; name: string | nul
 - [ ] **Step 3: Type-check**
 
 Run: `cd frontend && npx tsc --noEmit`
-Expected: FAIL in `src/app/fame/page.tsx`, which still expects `{name, score}`. That is correct and is fixed in Task 8. To keep this task self-contained, update the page's local type now:
+Expected: FAIL in `src/app/fame/page.tsx`, which still expects `{name, score}`.
 
-In `frontend/src/app/fame/page.tsx` change the state type to
-`useState<{ address: string; name: string | null; score: number }[]>([])`
-and render `{s.name ?? s.address}` as a temporary placeholder — Task 8 replaces it with the alias.
+Fix it here rather than leaving the tree broken. In `frontend/src/app/fame/page.tsx`:
+
+```tsx
+import { aliasFor } from '@/lib/alias';
+```
+
+Change the state type to
+`useState<{ address: string; name: string | null; score: number }[]>([])`,
+render `{s.name ?? aliasFor(s.address)}`, and change the row key to `s.address`.
+
+Do **not** render the raw address as an interim placeholder: the plan's global
+constraints forbid raw `0x…` in ordinary UI, and `aliasFor` already exists from
+Task 1. Task 8 then only has to confirm this page, not repair it.
 
 Re-run: `npx tsc --noEmit` — expected clean.
 
