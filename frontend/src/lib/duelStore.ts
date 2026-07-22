@@ -220,3 +220,23 @@ export async function listOpenDuels(viewer?: string): Promise<DuelRow[]> {
     order by created_at desc limit 50`;
   return rows.map(toRow);
 }
+
+/**
+ * Every duel a wallet took part in, newest first.
+ *
+ * Taps and scores are nulled for EVERY row, not just unfinished ones: the
+ * profile page renders outcomes from `winner`, never from scores, so there is
+ * no reason to put an opponent's score on the wire. Keeping this
+ * unconditional means the no-sniping rule cannot regress by someone editing a
+ * status condition.
+ */
+export async function listDuelsForAddress(address: string): Promise<DuelRow[]> {
+  const rows = await sql`
+    select id, onchain_id, seed, stake_wei, token, creator, acceptor, status, challenge_to, winner,
+           settle_tx, created_at, updated_at,
+           null as creator_taps, null as creator_score, null as acceptor_taps, null as acceptor_score
+    from duels
+    where creator = ${address} or acceptor = ${address}
+    order by created_at desc limit 100`;
+  return rows.map(toRow);
+}

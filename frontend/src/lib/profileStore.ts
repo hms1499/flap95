@@ -37,3 +37,8 @@ export async function topScores(): Promise<{ name: string; score: number }[]> {
     order by b.score desc, b.updated_at asc limit 20`;
   return rows.map((r) => ({ name: r.name as string, score: Number(r.score) }));
 }
+
+export async function getBestScore(address: string): Promise<number | null> {
+  const rows = await sql`select score from practice_best where address = ${address}`;
+  return rows.length ? Number(rows[0].score) : null;
+}
