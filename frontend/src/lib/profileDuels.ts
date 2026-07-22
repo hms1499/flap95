@@ -1,20 +1,32 @@
-import type { DuelRow } from './duelStore';
-
-/** Unfinished duels the player may still need to act on. */
-export const ACTIVE_STATUSES = ['funded', 'open', 'accepted', 'settling'] as const;
-/** Duels that are over, one way or another. */
-export const HISTORY_STATUSES = ['settled', 'cancelled'] as const;
+import type { DuelRow, DuelStatus } from './duelStore';
 
 /**
- * Splits a wallet's duels for the profile page. `draft` rows are dropped:
- * a draft was never funded, so there is no stake and nothing to act on.
+ * Where each duel status belongs on the profile page.
+ *
+ * Typing this as a full `Record<DuelStatus, …>` is the point: adding a status
+ * to `DuelStatus` without deciding its home here fails the build, instead of
+ * silently dropping those duels from the page.
+ *
+ * `draft` is dropped on purpose — a draft was never funded, so there is no
+ * stake and nothing to act on.
  */
+const STATUS_ROUTE: Record<DuelStatus, 'active' | 'history' | 'drop'> = {
+  draft: 'drop',
+  funded: 'active',
+  open: 'active',
+  accepted: 'active',
+  settling: 'active',
+  settled: 'history',
+  cancelled: 'history',
+};
+
 export function splitDuels(rows: readonly DuelRow[]): { active: DuelRow[]; history: DuelRow[] } {
   const active: DuelRow[] = [];
   const history: DuelRow[] = [];
   for (const r of rows) {
-    if ((ACTIVE_STATUSES as readonly string[]).includes(r.status)) active.push(r);
-    else if ((HISTORY_STATUSES as readonly string[]).includes(r.status)) history.push(r);
+    const where = STATUS_ROUTE[r.status];
+    if (where === 'active') active.push(r);
+    else if (where === 'history') history.push(r);
   }
   return { active, history };
 }
