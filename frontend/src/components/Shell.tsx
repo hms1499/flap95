@@ -12,6 +12,7 @@ const NAV = [
   { href: '/duels', ico: '⚔️', label: 'Open Duels', file: 'C:\\DUELS' },
   { href: '/duels/new', ico: '📝', label: 'New Duel', file: 'NEWDUEL.EXE' },
   { href: '/fame', ico: '🏆', label: 'Hall of Fame', file: 'HALLOFFAME.XLS' },
+  { href: '/profile', ico: '👤', label: 'Profile', file: 'PROFILE.EXE' },
 ];
 
 /** Label for the taskbar's active-window button. */
