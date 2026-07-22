@@ -3,7 +3,10 @@ import { normalizeName, setNameMessage, verifySignedAction } from '@/lib/profile
 import { getName, setName } from '@/lib/profileStore';
 
 export async function POST(req: Request) {
-  const { address, name, timestamp, signature } = await req.json();
+  const body = await req.json().catch(() => null);
+  if (body === null || typeof body !== 'object')
+    return NextResponse.json({ error: 'bad input' }, { status: 400 });
+  const { address, name, timestamp, signature } = body;
   if (
     typeof address !== 'string' || typeof name !== 'string' ||
     typeof timestamp !== 'number' || typeof signature !== 'string'
