@@ -105,3 +105,22 @@ describe('verifySignedAction', () => {
     ).resolves.toBe('bad_signature');
   });
 });
+
+describe('normalizeName vs generated aliases', () => {
+  it('rejects a name shaped like a generated alias', () => {
+    // Without this, anyone could claim RUFFLED_7F9 and impersonate the wallet
+    // that alias belongs to.
+    expect(normalizeName('RUFFLED_7F9').ok).toBe(false);
+    expect(normalizeName('PLAYER_000').ok).toBe(false);
+  });
+
+  it('still accepts ordinary names that merely resemble one', () => {
+    expect(normalizeName('Ruffled_7f9').ok).toBe(true);   // not all-caps
+    expect(normalizeName('RUFFLED_7F9A').ok).toBe(true);  // four hex chars
+    expect(normalizeName('RUFFLED').ok).toBe(true);       // no suffix
+  });
+
+  it('still accepts Vietnamese names', () => {
+    expect(normalizeName('Đổi Tên OK').ok).toBe(true);
+  });
+});
