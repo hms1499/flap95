@@ -10,6 +10,22 @@ vi.mock('@/lib/profileStore', () => ({
   topScores: async () => [],
 }));
 
+// A spy that delegates to the real verifyRun, so tests can prove *whether*
+// (and pin *when*) the route replayed a run — not just what status came back.
+// Wrapping rather than replacing keeps every existing assertion about scores
+// and errors working off the real engine.
+const verifyRunSpy = vi.fn();
+vi.mock('@/engine/verify', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/engine/verify')>();
+  return {
+    ...actual,
+    verifyRun: (...args: Parameters<typeof actual.verifyRun>) => {
+      verifyRunSpy(...args);
+      return actual.verifyRun(...args);
+    },
+  };
+});
+
 process.env.SEED_SECRET = 'test-secret';
 
 const { POST } = await import('./route');
@@ -17,6 +33,9 @@ const { issueSeedToken } = await import('@/lib/seedToken');
 const { verifyRun } = await import('@/engine/verify');
 
 const ADDRESS = '0x5028f26d8c3c0b3d88ab730ef98fef8f4d2f97f9';
+// Same address, uppercased hex — the regex explicitly allows uppercase
+// ([0-9a-fA-F]), but the "0x" prefix itself must stay lowercase to match it.
+const ADDRESS_UPPER = '0x' + ADDRESS.slice(2).toUpperCase();
 const SEED = 12345;
 // An empty tap list is a real, verifiable run: the bird falls and dies.
 const TAPS: number[] = [];
@@ -57,11 +76,25 @@ function validBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-beforeEach(() => upsertBest.mockReset());
+beforeEach(() => {
+  upsertBest.mockReset();
+  // Fixture computation above (RUN, LONG_RUN) ran at module scope, before any
+  // test — reset here so those calls never leak into a test's assertions.
+  verifyRunSpy.mockReset();
+});
 
 describe('POST /api/practice', () => {
   it('accepts a valid run and stores the score the server computed', async () => {
     const res = await post(validBody());
+    expect(res.status).toBe(200);
+    expect(upsertBest).toHaveBeenCalledWith(ADDRESS.toLowerCase(), RUN.score);
+    // A passing case must actually replay — otherwise "not called" in the
+    // rejection cases below would be true for a route that never replays at all.
+    expect(verifyRunSpy).toHaveBeenCalled();
+  });
+
+  it('lowercases the address before storing, even when submitted mixed-case', async () => {
+    const res = await post(validBody({ address: ADDRESS_UPPER }));
     expect(res.status).toBe(200);
     expect(upsertBest).toHaveBeenCalledWith(ADDRESS.toLowerCase(), RUN.score);
   });
@@ -76,6 +109,7 @@ describe('POST /api/practice', () => {
     const res = await post(validBody({ token: 'forged.token' }));
     expect(res.status).toBe(401);
     expect(upsertBest).not.toHaveBeenCalled();
+    expect(verifyRunSpy).not.toHaveBeenCalled();
   });
 
   it('rejects a token whose seed does not match the submitted seed', async () => {
@@ -83,6 +117,7 @@ describe('POST /api/practice', () => {
     const res = await post(validBody({ seed: SEED + 1 }));
     expect(res.status).toBe(401);
     expect(upsertBest).not.toHaveBeenCalled();
+    expect(verifyRunSpy).not.toHaveBeenCalled();
   });
 
   it('rejects an expired token', async () => {
@@ -90,6 +125,7 @@ describe('POST /api/practice', () => {
     const res = await post(validBody({ token: stale }));
     expect(res.status).toBe(401);
     expect(upsertBest).not.toHaveBeenCalled();
+    expect(verifyRunSpy).not.toHaveBeenCalled();
   });
 
   it('rejects a run that could not have been played in the elapsed time', async () => {
