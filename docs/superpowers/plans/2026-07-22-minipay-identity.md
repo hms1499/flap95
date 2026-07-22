@@ -634,6 +634,24 @@ const TAPS: number[] = [];
 const RUN = verifyRun(SEED, TAPS);
 if (!RUN.ok) throw new Error('fixture run must verify');
 
+// A second fixture, found by searching this deterministic engine: it survives
+// 637 ticks (~10.6s) and scores 7.
+//
+// The wall-clock floor cannot be exercised with the empty-tap run above. That
+// one dies at tick 55, about 0.9 seconds, which is BELOW SUBMIT_SLACK_MS — so
+// no submission of it is ever "too fast" and the floor can never fire. Any run
+// used to test the floor must last comfortably longer than the slack.
+const LONG_TAPS = [
+  0, 5, 9, 13, 17, 21, 44, 48, 52, 56, 60, 64, 121, 194, 264, 295,
+  302, 306, 310, 314, 318, 322, 360, 418, 478, 484, 493, 559, 565,
+];
+const LONG_RUN = verifyRun(SEED, LONG_TAPS);
+if (!LONG_RUN.ok) throw new Error('long fixture run must verify');
+// Guard the premise rather than assuming it: if an engine change ever shortens
+// this run below the slack, fail here with a clear reason instead of leaving a
+// test that silently proves nothing.
+if (LONG_RUN.deathTick < 200) throw new Error('long fixture no longer outlives the slack');
+
 function post(body: unknown): Promise<Response> {
   return POST(new Request('http://test/api/practice', {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
@@ -686,11 +704,20 @@ describe('POST /api/practice', () => {
   });
 
   it('rejects a run that could not have been played in the elapsed time', async () => {
+    // 10.6 seconds of play cannot arrive milliseconds after the seed was issued.
     const justIssued = issueSeedToken(SEED, Date.now(), 'test-secret');
-    const res = await post(validBody({ token: justIssued }));
+    const res = await post(validBody({ taps: LONG_TAPS, token: justIssued }));
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ error: 'too_fast' });
     expect(upsertBest).not.toHaveBeenCalled();
+  });
+
+  it('accepts that same run once enough time has passed', async () => {
+    // The pair matters: without this, a floor that rejected everything would
+    // still pass the test above.
+    const res = await post(validBody({ taps: LONG_TAPS }));
+    expect(res.status).toBe(200);
+    expect(upsertBest).toHaveBeenCalledWith(ADDRESS.toLowerCase(), LONG_RUN.score);
   });
 
   it('rejects an invalid trace', async () => {
@@ -796,7 +823,7 @@ export async function POST(req: Request) {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cd frontend && npx vitest run src/app/api/practice/route.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 Then the full suite: `npm test` — expected green, and `npx tsc --noEmit` clean.
 
