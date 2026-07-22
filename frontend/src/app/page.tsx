@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Window } from '@/components/Window';
 import { PixelBird } from '@/components/PixelBird';
+import { NAV } from '@/lib/nav';
 
 export default function Home() {
   return (
@@ -32,10 +33,11 @@ export default function Home() {
       </Window>
 
       <nav className="desktop-icons">
-        <Link className="desktop-icon" href="/play"><span className="glyph">🐤</span><span>Play</span></Link>
-        <Link className="desktop-icon" href="/duels"><span className="glyph">⚔️</span><span>Open Duels</span></Link>
-        <Link className="desktop-icon" href="/duels/new"><span className="glyph">📝</span><span>New Duel</span></Link>
-        <Link className="desktop-icon" href="/fame"><span className="glyph">🏆</span><span>Hall of Fame</span></Link>
+        {NAV.map((n) => (
+          <Link key={n.href} className="desktop-icon" href={n.href}>
+            <span className="glyph">{n.ico}</span><span>{n.label}</span>
+          </Link>
+        ))}
       </nav>
     </main>
   );

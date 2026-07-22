@@ -50,6 +50,8 @@ body::after {
 }
 
 .desktop-icons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+/* An odd number of icons would leave the last one stranded in half a row; let it span. */
+.desktop-icons > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .desktop-icon {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
   min-height: 92px; padding: 12px 4px; color: #fff; text-decoration: none;

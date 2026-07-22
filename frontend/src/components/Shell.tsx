@@ -6,14 +6,7 @@ import { useAccount, useConnect, useDisconnect } from 'wagmi';
 import { PixelBird } from './PixelBird';
 import { Dialog95 } from './Dialog95';
 import { isMiniPay } from '@/lib/minipay';
-
-const NAV = [
-  { href: '/play', ico: '🐤', label: 'Play', file: 'PRACTICE.EXE' },
-  { href: '/duels', ico: '⚔️', label: 'Open Duels', file: 'C:\\DUELS' },
-  { href: '/duels/new', ico: '📝', label: 'New Duel', file: 'NEWDUEL.EXE' },
-  { href: '/fame', ico: '🏆', label: 'Hall of Fame', file: 'HALLOFFAME.XLS' },
-  { href: '/profile', ico: '👤', label: 'Profile', file: 'PROFILE.EXE' },
-];
+import { NAV } from '@/lib/nav';
 
 /** Label for the taskbar's active-window button. */
 function windowLabel(pathname: string): { ico: string; file: string } {
