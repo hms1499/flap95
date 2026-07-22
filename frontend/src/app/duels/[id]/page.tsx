@@ -18,7 +18,7 @@ import { timeLeft } from '@/lib/duelClock';
 import { useNow } from '@/lib/useNow';
 import { useNames, displayName } from '@/lib/useNames';
 
-type Phase = 'loading' | 'preview' | 'settled' | 'funded' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
+type Phase = 'loading' | 'preview' | 'settled' | 'funded' | 'pending' | 'reclaim' | 'reclaiming' | 'approving' | 'accepting' | 'binding' | 'playing' | 'submitting' | 'result' | 'error';
 
 interface Detail {
   id: number; onchainId: string | null; status: string; stakeWei: string; token: string | null;
@@ -107,6 +107,12 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         // fall through to the cancelExpired refund path below, so this stays inside
         // the !maybeStale block.
         if (d.status === 'funded') { setPhase('funded'); return; }
+        // Both stakes are locked while the acceptor plays ('accepted') and while the settle
+        // relay is in flight ('settling'). Neither is an error and neither is actionable yet:
+        // refundStale only unlocks 24h after accept, which is the maybeStale path below. The
+        // profile page links participants straight here, so say what is happening to their
+        // money instead of "This duel is not open."
+        if (d.status === 'accepted' || d.status === 'settling') { setPhase('pending'); return; }
         setPhase('error');
         setError({ message: 'This duel is not open.' });
         return;
@@ -392,6 +398,30 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
           </div>
         </Dialog95>
       )}
+      {phase === 'pending' && detail && (() => {
+        const playing = detail.status === 'accepted';
+        const yours = viewerRole(address, detail.creator, detail.acceptor) !== 'observer';
+        return (
+          <Window title={`DUEL_${detail.id}.EXE — in progress`}>
+            <p>{playing ? '⏳ The challenger is playing their run.' : '⏳ The result is in — settling on-chain.'}</p>
+            <p style={{ fontSize: 12 }}>
+              Both stakes (<span className="stake">{stakeStr} {symbol}</span> each) are held by the escrow until
+              this finishes{yours ? '' : ' — you are not one of the two players'}.{' '}
+              {playing
+                ? 'Nothing to do yet: the result appears here as soon as they finish.'
+                : 'The payout goes out automatically once the transaction confirms.'}
+            </p>
+            <p className="fineprint">
+              If it is still stuck 24 hours after the duel was accepted, reload this page and it will
+              offer to refund both players.
+            </p>
+            <div className="row">
+              <button onClick={() => window.location.reload()}>Check again</button>
+              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            </div>
+          </Window>
+        );
+      })()}
       {phase === 'reclaim' && detail && reclaimKind === 'refundStale' && (
         <Window title={`DUEL_${detail.id}.EXE — stuck`}>
           <p>⚠️ This duel was accepted but never settled for over 24 hours.</p>
