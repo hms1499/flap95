@@ -427,7 +427,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
           <p>⚠️ This duel was accepted but never settled for over 24 hours.</p>
           <p style={{ fontSize: 12 }}>
             Releasing it refunds <b>both players</b> their <span className="stake">{stakeStr} {symbol}</span> stake.
-            Anyone can trigger this — the funds always go back to the two players, whoever pays the gas.
+            Anyone can trigger this — the funds always go back to the two players, whoever pays the network fee.
           </p>
           {isConnected
             ? <button onClick={reclaim} style={{ width: '100%' }}>Release both stakes</button>
