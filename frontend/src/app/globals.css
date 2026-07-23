@@ -352,6 +352,10 @@ table.ledger td:last-child { font-family: 'Cascadia Mono', Consolas, 'Courier Ne
 /* One vertical rhythm for stacked blocks, replacing a mix of marginTop 8 and 10. */
 .stack { display: flex; flex-direction: column; gap: 8px; }
 
+/* Inside a stack the 8px gap is the only spacing; zero the paragraphs' own
+   margins so flex items (which never collapse margins) don't double it up. */
+.stack > p { margin: 0; }
+
 /* ---- Motion off ---- */
 @media (prefers-reduced-motion: reduce) {
   .boot { display: none !important; }
