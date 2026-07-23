@@ -139,6 +139,13 @@ function CreateDuel() {
             </div>
           </fieldset>
           <p className="fineprint">Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
+          {/* The stake and the run are two separate steps, and the run is easy to abandon
+              (close the tab, walk away) — which strands the stake in a funded duel no
+              opponent can accept. Say so before the money moves, not after. */}
+          <p className="fineprint">
+            ⚠️ Two steps: you stake now, then play one run to open the duel. Leave before
+            finishing that run and your stake stays locked until you reclaim it 24h later.
+          </p>
           {/* Selecting a tier used to send the transaction, so a row of buttons that looked
               exactly like the currency row above it — which only selects — spent real money
               on first tap. Committing now needs this separate, explicitly worded action. */}
@@ -158,6 +165,10 @@ function CreateDuel() {
       )}
       {phase === 'playing' && duel && (
         <Window title="NEWDUEL.EXE — your run. Make it count.">
+          <p className="fineprint">
+            Your stake is in. <b>Finish this run to open the duel</b> for challengers — if you
+            leave now it stays locked until you reclaim it.
+          </p>
           <GameCanvas seed={duel.seed} onRunEnd={onRunEnd} />
         </Window>
       )}
