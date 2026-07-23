@@ -1,6 +1,6 @@
 # Section consistency Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Make every `<Window>` section on every page render the same four states — loading, error, empty, content — from shared parts instead of per-page markup.
 
@@ -43,7 +43,7 @@ Resolution: the logic that can hold a bug lives in a pure `fetchJson`, which is 
   - `fetchJson<T>(url: string): Promise<{ ok: true; data: T } | { ok: false }>`
   - `useJson<T>(url: string | null): { data: T | null; error: boolean; loading: boolean; reload: () => void }` — `url === null` means "not ready to fetch yet" (no wallet connected, for instance) and holds the hook in its loading state without issuing a request.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `frontend/src/lib/fetchJson.test.ts`:
 
@@ -83,12 +83,12 @@ describe('fetchJson', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `cd frontend && npx vitest run src/lib/fetchJson.test.ts`
 Expected: FAIL — cannot resolve `./fetchJson`.
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `frontend/src/lib/fetchJson.ts`:
 
@@ -112,12 +112,12 @@ export async function fetchJson<T>(url: string): Promise<{ ok: true; data: T } |
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `cd frontend && npx vitest run src/lib/fetchJson.test.ts`
 Expected: PASS, 4 tests.
 
-- [ ] **Step 5: Write the hook**
+- [x] **Step 5: Write the hook**
 
 Create `frontend/src/lib/useJson.ts`:
 
@@ -163,7 +163,7 @@ export function useJson<T>(url: string | null): {
 }
 ```
 
-- [ ] **Step 6: Type-check and commit**
+- [x] **Step 6: Type-check and commit**
 
 ```bash
 cd frontend && npx tsc --noEmit && npm test
@@ -189,7 +189,7 @@ git commit -m "feat(ui): one fetch helper and one hook for every section's data"
 
   `as` defaults to `'block'`. A caller inside `<tbody>` passes `as="row"` with a `colSpan`, because a component cannot detect its parent and a `<p>` inside `<tbody>` is invalid HTML that browsers silently relocate.
 
-- [ ] **Step 1: Write the components**
+- [x] **Step 1: Write the components**
 
 Create `frontend/src/components/SectionState.tsx`:
 
@@ -233,7 +233,7 @@ export function LoadFailed({ onRetry, ...shape }: Shape & { onRetry: () => void 
 }
 ```
 
-- [ ] **Step 2: Add the two utility classes**
+- [x] **Step 2: Add the two utility classes**
 
 In `frontend/src/app/globals.css`, next to the existing `.fineprint` rule:
 
@@ -244,7 +244,7 @@ In `frontend/src/app/globals.css`, next to the existing `.fineprint` rule:
 .stack { display: flex; flex-direction: column; gap: 8px; }
 ```
 
-- [ ] **Step 3: Type-check and commit**
+- [x] **Step 3: Type-check and commit**
 
 ```bash
 cd frontend && npx tsc --noEmit && npm run build
@@ -267,7 +267,7 @@ Expected: tsc clean; build "Compiled successfully". `LoadFailed` uses `onClick`,
 - Consumes: `useJson` (Task 1); `Loading`, `Empty`, `LoadFailed` (Task 2); `aliasFor` from the identity plan.
 - Produces: nothing.
 
-- [ ] **Step 1: Rewrite the Hall of Fame**
+- [x] **Step 1: Rewrite the Hall of Fame**
 
 Replace `frontend/src/app/fame/page.tsx`:
 
@@ -313,7 +313,7 @@ export default function FamePage() {
 }
 ```
 
-- [ ] **Step 2: Move `/duels` onto the hook**
+- [x] **Step 2: Move `/duels` onto the hook**
 
 In `frontend/src/app/duels/page.tsx`, delete the `useState` + `useEffect` + `fetch` block and replace it with:
 
@@ -343,18 +343,18 @@ Inside `<tbody>`, replace the current `{duels.length === 0 && <tr><td colSpan={3
 
 and guard the existing `{duels.map(…)}` with `{!loading && !error && duels.map(…)}`.
 
-- [ ] **Step 3: Gates**
+- [x] **Step 3: Gates**
 
 Run in `frontend/`: `npx tsc --noEmit && npm test && npx eslint src`
 Expected: tsc clean, tests green, no new lint problems.
 
-- [ ] **Step 4: Verify by hand**
+- [x] **Step 4: Verify by hand**
 
 With the dev server running, at 360×640:
 - `/fame` shows "Loading…" first, then either rows or "No scores yet · Play a round" — never the empty line while a request is in flight. Throttle to Slow 3G in DevTools to see it.
 - Stop the dev server, reload `/duels`, and confirm the failure renders "⚠️ Could not load this. Try again" instead of an empty table. Restart the server and click Try again — the list appears.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 cd /Users/vanhuy/Desktop/celo-game
@@ -376,7 +376,7 @@ git commit -m "fix(ui): /fame and /duels stop showing 'empty' while loading or f
 - Consumes: everything from Tasks 1–3.
 - Produces: nothing.
 
-- [ ] **Step 1: Move `/profile` onto the hook**
+- [x] **Step 1: Move `/profile` onto the hook**
 
 In `frontend/src/app/profile/page.tsx`, replace the hand-written `load` callback, its `useEffect`, and the `me` / `loadError` state with:
 
@@ -397,7 +397,7 @@ Then replace the three hand-rolled state renders:
 
 The rename flow keeps its own `error` / `saved` state; it is a mutation, not a fetch, and `useJson` does not own it. `load()` no longer exists, so both of its call sites move to `reload()`: the rename handler, and the on-load registry sync effect added by the identity plan (Task 8, Step 3).
 
-- [ ] **Step 2: Fix the three off-convention titles**
+- [x] **Step 2: Fix the three off-convention titles**
 
 | File | From | To |
 |---|---|---|
@@ -405,7 +405,7 @@ The rename flow keeps its own `error` / `saved` state; it is a mutation, not a f
 | `src/app/duels/[id]/page.tsx` | `DUEL_${detail.id}.EXE — yours` | `DUEL_${detail.id}.EXE — your duel` |
 | `src/app/duels/[id]/page.tsx` | `DUEL.EXE` in the loading phase | `DUEL_${id}.EXE` (the route param is known before the fetch resolves) |
 
-- [ ] **Step 3: Replace the static inline styles**
+- [x] **Step 3: Replace the static inline styles**
 
 Run `grep -rn "style={{" src/app src/components` and convert, leaving only styles computed from state:
 
@@ -419,7 +419,7 @@ Keep these four, which are genuinely dynamic:
 - `style={{ flex: 1, fontWeight: i === tier ? 'bold' : 'normal' }}`
 - the error box's `style={{ fontSize: 11, maxHeight: 140, overflowY: 'auto', wordBreak: 'break-word' }}` — a one-off scroll container, not a shared pattern.
 
-- [ ] **Step 4: Full gate run**
+- [x] **Step 4: Full gate run**
 
 Run in `frontend/`:
 
@@ -437,7 +437,7 @@ grep -rn "style={{" src/app src/components | wc -l
 
 Expected: 4.
 
-- [ ] **Step 5: Verify every section by hand**
+- [x] **Step 5: Verify every section by hand**
 
 With the dev server running at a 360×640 viewport, walk all five pages and record what you saw for each: `/`, `/play`, `/duels`, `/fame`, `/profile`.
 
@@ -449,7 +449,7 @@ For each `<Window>`, confirm:
 
 Then switch wallets while `/profile` is open and confirm the page does not briefly show the previous wallet's duels — this is the cancellation behaviour that has no automated test.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd /Users/vanhuy/Desktop/celo-game
