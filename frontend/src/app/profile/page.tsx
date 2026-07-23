@@ -1,10 +1,12 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { useAccount, useConnect, useSignMessage } from 'wagmi';
+import { useAccount, useConnect, useWriteContract, usePublicClient } from 'wagmi';
 import Link from 'next/link';
 import { Window } from '@/components/Window';
-import { normalizeName, setNameMessage } from '@/lib/profile';
-import { formatStake } from '@/lib/contracts';
+import { normalizeName } from '@/lib/profile';
+import { formatStake, NAME_REGISTRY_ADDRESS, nameRegistryAbi } from '@/lib/contracts';
+import { feeCurrencyOverrides } from '@/lib/minipay';
+import { aliasFor } from '@/lib/alias';
 import { useNames, displayName } from '@/lib/useNames';
 import { viewerRole } from '@/lib/outcome';
 import { activeLabel } from '@/lib/profileDuels';
@@ -30,7 +32,8 @@ function outcomeLabel(d: MeDuel, address: string | undefined): string {
 export default function ProfilePage() {
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
-  const { signMessageAsync } = useSignMessage();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
   const now = useNow();
 
   const [me, setMe] = useState<Me | null>(null);
@@ -81,27 +84,44 @@ export default function ProfilePage() {
     return () => { cancelled = true; };
   }, [load]);
 
-  async function rename() {
+  useEffect(() => {
     if (!address) return;
+    // Covers a setName transaction that landed while this page was not open.
+    void fetch('/api/profile', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ address }),
+    }).then(() => load()).catch(() => {});
+  }, [address, load]);
+
+  async function rename() {
+    if (!address || !publicClient) return;
     const n = normalizeName(draftName);
     if (!n.ok) { setError('Name: 1–16 letters, digits, space, _ . -'); return; }
     setError(null);
     setSaved(false);
     setBusy(true);
     try {
-      const ts = Date.now();
-      const signature = await signMessageAsync({ message: setNameMessage(n.name, ts) });
+      const hash = await writeContractAsync({
+        address: NAME_REGISTRY_ADDRESS, abi: nameRegistryAbi,
+        functionName: 'setName', args: [n.name],
+        ...feeCurrencyOverrides(),
+      });
+      await publicClient.waitForTransactionReceipt({ hash });
+      // The name is now on-chain; ask the server to read it back into the index.
       const res = await fetch('/api/profile', {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address, name: n.name, timestamp: ts, signature }),
+        body: JSON.stringify({ address }),
       });
-      if (res.status === 409) { setError('That name is taken — pick another.'); return; }
-      if (!res.ok) { setError('Could not save your name. Try again.'); return; }
+      if (res.status === 409) {
+        setError('That name was just taken — pick another and send again.');
+        return;
+      }
+      if (!res.ok) { setError('Saved on-chain, but the index did not update. Reload to retry.'); return; }
       setMe((m) => (m ? { ...m, name: n.name } : m));
       setDraftName('');
       setSaved(true);
     } catch {
-      setError('Signature request was cancelled.');
+      setError('The transaction was cancelled or did not go through.');
     } finally {
       setBusy(false);
     }
@@ -135,7 +155,7 @@ export default function ProfilePage() {
         ) : (
           <>
             <p>
-              👤 <b>{me.name ?? 'No name yet'}</b>
+              👤 <b>{me.name ?? aliasFor(address ?? '')}</b>
               {me.bestScore !== null && (
                 <> · best practice score <b>{me.bestScore}</b></>
               )}
@@ -151,14 +171,15 @@ export default function ProfilePage() {
                   onChange={(e) => { setDraftName(e.target.value); setSaved(false); setError(null); }}
                 />
                 <button onClick={rename} disabled={busy || !draftName.trim()}>
-                  {busy ? 'Signing…' : 'Save name'}
+                  {busy ? 'Confirming…' : 'Save name'}
                 </button>
               </div>
               {saved && <p className="fineprint">Saved.</p>}
               {error && <p className="fineprint">⚠️ {error}</p>}
               <p className="fineprint">
-                Your scores follow your wallet, so renaming keeps them. Your old name becomes
-                free for anyone else to take.
+                Your scores follow your wallet, so renaming keeps them. Setting a name is a
+                transaction — the network fee is paid in USDm. Your old name becomes free for
+                anyone else to take.
               </p>
             </fieldset>
           </>

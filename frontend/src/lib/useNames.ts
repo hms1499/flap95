@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { aliasFor } from './alias';
 
 /** Batch-resolves profile names for the given addresses. Keys are lowercase. */
 export function useNames(addresses: (string | null | undefined)[]): Record<string, string> {
@@ -19,6 +20,7 @@ export function useNames(addresses: (string | null | undefined)[]): Record<strin
   return names;
 }
 
+/** A claimed name if there is one, otherwise the address's generated alias. */
 export function displayName(names: Record<string, string>, address: string): string {
-  return names[address.toLowerCase()] ?? `${address.slice(0, 8)}…`;
+  return names[address.toLowerCase()] ?? aliasFor(address);
 }
