@@ -347,6 +347,10 @@ table.ledger td:last-child { font-family: 'Cascadia Mono', Consolas, 'Courier Ne
 .result__tiebreak { font-size: 11px; margin: 0; opacity: .8; }
 
 .fineprint { font-size: 12px; color: #333; }
+/* Full-width action button. Replaces eight copies of style={{ width: '100%' }}. */
+.btn-block { width: 100%; }
+/* One vertical rhythm for stacked blocks, replacing a mix of marginTop 8 and 10. */
+.stack { display: flex; flex-direction: column; gap: 8px; }
 
 /* ---- Motion off ---- */
 @media (prefers-reduced-motion: reduce) {
