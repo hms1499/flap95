@@ -7,27 +7,25 @@ import { GameCanvas } from '@/components/GameCanvas';
 import { aliasFor } from '@/lib/alias';
 
 interface Seed { seed: number; token: string }
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export default function PlayPage() {
   const [seed, setSeed] = useState<Seed | null>(null);
   const [runKey, setRunKey] = useState(0);
   const [result, setResult] = useState<{ taps: number[]; score: number } | null>(null);
   const [profileName, setProfileName] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveNonce, setSaveNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
 
   // Every run plays a seed the server issued. A browser-chosen seed could be
-  // solved offline before the run was ever played.
-  //
-  // The fetch lives inside the effect rather than in a useCallback the effect
-  // calls: the callback form made the linter see a setState reachable from an
-  // effect body, and inlining it also buys the cancellation flag this page was
-  // missing — a slow seed request landing after "Play again" would otherwise
-  // overwrite the newer round's seed.
+  // solved offline before the run was ever played. The fetch lives inside the
+  // effect (not a useCallback) so the linter does not see a setState reachable
+  // from an effect body, and so a slow seed landing after "Play again" can be
+  // cancelled instead of overwriting the newer round's seed.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -54,31 +52,38 @@ export default function PlayPage() {
     return () => { stale = true; };
   }, [address]);
 
-  const onRunEnd = useCallback((taps: number[], score: number) => setResult({ taps, score }), []);
-
-  async function save() {
+  // Practice scores are the funnel's social proof, so a finished run saves
+  // itself the moment a wallet is present — no button, no signature. The server
+  // keeps only the best score, so re-saving every run is harmless. Keyed on
+  // [result, address, seed] rather than saveState so it cannot re-enter itself
+  // and cancel its own in-flight save; a run finished *before* connecting saves
+  // when `address` later attaches. saveNonce lets the error retry re-run it.
+  // setSaveState lives inside the IIFE to avoid a set-state-in-effect lint error.
+  useEffect(() => {
     if (!result || !address || !seed) return;
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await fetch('/api/practice', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ address, seed: seed.seed, taps: result.taps, token: seed.token }),
-      });
-      if (!res.ok) { setError('Could not save your score. Try again.'); return; }
-      setSaved(true);
-    } catch {
-      setError('Could not save your score. Try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
+    let cancelled = false;
+    void (async () => {
+      setSaveState('saving');
+      try {
+        const res = await fetch('/api/practice', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ address, seed: seed.seed, taps: result.taps, token: seed.token }),
+        });
+        if (!cancelled) setSaveState(res.ok ? 'saved' : 'error');
+      } catch {
+        if (!cancelled) setSaveState('error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [result, address, seed, saveNonce]);
+
+  const onRunEnd = useCallback((taps: number[], score: number) => setResult({ taps, score }), []);
 
   function again() {
     // Bumping runKey does double duty: it remounts the canvas for a fresh run
     // and re-runs the seed effect above, so a new round always plays a seed the
     // server issued for it.
-    setResult(null); setSaved(false); setError(null); setSeed(null);
+    setResult(null); setSaveState('idle'); setError(null); setSeed(null);
     setRunKey((k) => k + 1);
   }
 
@@ -93,34 +98,47 @@ export default function PlayPage() {
       </Window>
       <Dialog95 title="Game over" open={result !== null}>
         <p>⚠️ You scored <b>{result?.score}</b>.</p>
-        {saved ? (
-          <p>Saved to the Hall of Fame as <b>{shownAs}</b>.</p>
-        ) : !isConnected ? (
-          <button onClick={() => connectors[0] && connect({ connector: connectors[0] })}>
-            💰 Connect to keep your score
+
+        {!isConnected ? (
+          <button
+            onClick={() => connectors[0] && connect({ connector: connectors[0] })}
+            style={{ width: '100%' }}
+          >
+            💰 Connect to keep your score & duel
           </button>
         ) : (
-          <button onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : `Save score as ${shownAs}`}
-          </button>
+          <>
+            {saveState === 'saving' && <p className="fineprint">Saving your score…</p>}
+            {saveState === 'saved' && <p>Saved to the Hall of Fame as <b>{shownAs}</b>.</p>}
+            {saveState === 'error' && (
+              <p className="fineprint">
+                ⚠️ Couldn&apos;t save your score.{' '}
+                <button onClick={() => setSaveNonce((n) => n + 1)}>Try again</button>
+              </p>
+            )}
+            <a className="button" href="/duels/new">
+              <button style={{ width: '100%' }}>⚔️ Duel for stablecoins</button>
+            </a>
+            {/* The duel is a fresh run on its own server-issued seed (both players
+                run the same one), so this practice score is not carried into it —
+                it stays on the Hall of Fame. */}
+            <p className="fineprint">
+              A duel is a fresh run for real stakes — this practice score stays on the Hall of Fame.
+            </p>
+          </>
         )}
-        {shownAs !== null && !profileName && !saved && (
+
+        {isConnected && shownAs !== null && !profileName && (
           <p className="fineprint">
             You appear as <b>{shownAs}</b>. Want your own name? Set it on your profile.
           </p>
         )}
+
         {error && <p className="fineprint">⚠️ {error}</p>}
-        <div className="row spread" style={{ marginTop: 8 }}>
+
+        <div className="row" style={{ marginTop: 8 }}>
           <button onClick={again}>Play again</button>
-          <a className="button" href="/duels/new"><button>Duel for stablecoins</button></a>
         </div>
-        {/* The duel button sits under "You scored X", which reads as if this run
-            carries into the duel. It does not: a duel is a fresh run on its own
-            server-issued seed (both players run the same one), so the score is
-            earned there, not inherited from here. */}
-        <p className="fineprint">
-          A duel is a fresh run for real stakes — this practice score stays on the Hall of Fame.
-        </p>
       </Dialog95>
     </main>
   );
