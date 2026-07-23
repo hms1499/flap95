@@ -1,5 +1,4 @@
 'use client';
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAccount } from 'wagmi';
 import { Window } from '@/components/Window';
@@ -8,17 +7,18 @@ import { viewerRole } from '@/lib/outcome';
 import { timeLeft } from '@/lib/duelClock';
 import { useNow } from '@/lib/useNow';
 import { useNames, displayName } from '@/lib/useNames';
+import { Loading, Empty, LoadFailed } from '@/components/SectionState';
+import { useJson } from '@/lib/useJson';
 
 interface OpenDuel { id: number; stakeWei: string; token: string | null; creator: string; challengeTo: string | null; createdAt: string }
 
 export default function DuelsPage() {
   const { address } = useAccount();
   const now = useNow();
-  const [duels, setDuels] = useState<OpenDuel[]>([]);
-  useEffect(() => {
-    const q = address ? `?viewer=${address}` : '';
-    fetch(`/api/duels${q}`).then((r) => r.json()).then((d) => setDuels(d.duels ?? []));
-  }, [address]);
+  const { data, error, loading, reload } = useJson<{ duels: OpenDuel[] }>(
+    address ? `/api/duels?viewer=${address}` : '/api/duels',
+  );
+  const duels = data?.duels ?? [];
   const names = useNames(duels.map((d) => d.creator));
 
   return (
@@ -27,7 +27,12 @@ export default function DuelsPage() {
         <table className="ledger">
           <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
           <tbody>
-            {duels.map((d) => {
+            {loading && <Loading as="row" colSpan={3} />}
+            {error && <LoadFailed as="row" colSpan={3} onRetry={reload} />}
+            {!loading && !error && duels.length === 0 && (
+              <Empty as="row" colSpan={3} line="No open duels" action={{ href: '/duels/new', label: 'Create one' }} />
+            )}
+            {!loading && !error && duels.map((d) => {
               // acceptDuel reverts with SelfAccept() for the creator, so a duel of your own
               // must never look like something you can join — the revert only surfaces after
               // the ERC-20 approve has already cost the user gas.
@@ -44,7 +49,6 @@ export default function DuelsPage() {
                 </tr>
               );
             })}
-            {duels.length === 0 && <tr><td colSpan={3}>No open duels. Create one!</td></tr>}
           </tbody>
         </table>
         <div className="row spread" style={{ marginTop: 8 }}>
