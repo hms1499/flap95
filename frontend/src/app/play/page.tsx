@@ -97,47 +97,49 @@ export default function PlayPage() {
           : <GameCanvas key={runKey} seed={seed.seed} onRunEnd={onRunEnd} />}
       </Window>
       <Dialog95 title="Game over" open={result !== null}>
-        <p>⚠️ You scored <b>{result?.score}</b>.</p>
+        <div className="stack">
+          <p>⚠️ You scored <b>{result?.score}</b>.</p>
 
-        {!isConnected ? (
-          <button
-            onClick={() => connectors[0] && connect({ connector: connectors[0] })}
-            style={{ width: '100%' }}
-          >
-            💰 Connect to keep your score & duel
-          </button>
-        ) : (
-          <>
-            {saveState === 'saving' && <p className="fineprint">Saving your score…</p>}
-            {saveState === 'saved' && <p>Saved to the Hall of Fame as <b>{shownAs}</b>.</p>}
-            {saveState === 'error' && (
+          {!isConnected ? (
+            <button
+              onClick={() => connectors[0] && connect({ connector: connectors[0] })}
+              className="btn-block"
+            >
+              💰 Connect to keep your score & duel
+            </button>
+          ) : (
+            <>
+              {saveState === 'saving' && <p className="fineprint">Saving your score…</p>}
+              {saveState === 'saved' && <p>Saved to the Hall of Fame as <b>{shownAs}</b>.</p>}
+              {saveState === 'error' && (
+                <p className="fineprint">
+                  ⚠️ Couldn&apos;t save your score.{' '}
+                  <button onClick={() => setSaveNonce((n) => n + 1)}>Try again</button>
+                </p>
+              )}
+              <a className="button" href="/duels/new">
+                <button className="btn-block">⚔️ Duel for stablecoins</button>
+              </a>
+              {/* The duel is a fresh run on its own server-issued seed (both players
+                  run the same one), so this practice score is not carried into it —
+                  it stays on the Hall of Fame. */}
               <p className="fineprint">
-                ⚠️ Couldn&apos;t save your score.{' '}
-                <button onClick={() => setSaveNonce((n) => n + 1)}>Try again</button>
+                A duel is a fresh run for real stakes — this practice score stays on the Hall of Fame.
               </p>
-            )}
-            <a className="button" href="/duels/new">
-              <button style={{ width: '100%' }}>⚔️ Duel for stablecoins</button>
-            </a>
-            {/* The duel is a fresh run on its own server-issued seed (both players
-                run the same one), so this practice score is not carried into it —
-                it stays on the Hall of Fame. */}
+            </>
+          )}
+
+          {isConnected && shownAs !== null && !profileName && (
             <p className="fineprint">
-              A duel is a fresh run for real stakes — this practice score stays on the Hall of Fame.
+              You appear as <b>{shownAs}</b>. Want your own name? Set it on your profile.
             </p>
-          </>
-        )}
+          )}
 
-        {isConnected && shownAs !== null && !profileName && (
-          <p className="fineprint">
-            You appear as <b>{shownAs}</b>. Want your own name? Set it on your profile.
-          </p>
-        )}
+          {error && <p className="fineprint">⚠️ {error}</p>}
 
-        {error && <p className="fineprint">⚠️ {error}</p>}
-
-        <div className="row" style={{ marginTop: 8 }}>
-          <button onClick={again}>Play again</button>
+          <div className="row">
+            <button onClick={again}>Play again</button>
+          </div>
         </div>
       </Dialog95>
     </main>

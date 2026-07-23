@@ -107,51 +107,53 @@ function CreateDuel() {
     <>
       {phase === 'pick-stake' && (
         <Window title="NEWDUEL.EXE — pick your stake">
-          {challenge && <p className="fineprint">Rematch challenge vs <span className="mono">{displayName(names, challenge)}</span></p>}
-          <fieldset>
-            <legend>Currency</legend>
-            <div className="row">
-              {STAKE_TOKENS.map((t) => (
-                <button
-                  key={t.symbol}
-                  onClick={() => setToken(t)}
-                  style={{ flex: 1, fontWeight: t.symbol === token.symbol ? 'bold' : 'normal' }}
-                  aria-pressed={t.symbol === token.symbol}
-                >
-                  {t.symbol}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <fieldset style={{ marginTop: 8 }}>
-            <legend>Stake — winner takes the pot</legend>
-            <div className="row">
-              {stakeTiersWei(token).map((s, i) => (
-                <button
-                  key={s.toString()}
-                  onClick={() => setTier(i)}
-                  style={{ flex: 1, fontWeight: i === tier ? 'bold' : 'normal' }}
-                  aria-pressed={i === tier}
-                >
-                  <span className="win">{formatUnits(s, token.decimals)}</span> {token.symbol}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <p className="fineprint">Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
-          {/* The stake and the run are two separate steps, and the run is easy to abandon
-              (close the tab, walk away) — which strands the stake in a funded duel no
-              opponent can accept. Say so before the money moves, not after. */}
-          <p className="fineprint">
-            ⚠️ Two steps: you stake now, then play one run to open the duel. Leave before
-            finishing that run and your stake stays locked until you reclaim it 24h later.
-          </p>
-          {/* Selecting a tier used to send the transaction, so a row of buttons that looked
-              exactly like the currency row above it — which only selects — spent real money
-              on first tap. Committing now needs this separate, explicitly worded action. */}
-          <button onClick={() => start(stakeTiersWei(token)[tier])} style={{ width: '100%', marginTop: 8 }}>
-            Create duel — stake {formatUnits(stakeTiersWei(token)[tier], token.decimals)} {token.symbol}
-          </button>
+          <div className="stack">
+            {challenge && <p className="fineprint">Rematch challenge vs <span className="mono">{displayName(names, challenge)}</span></p>}
+            <fieldset>
+              <legend>Currency</legend>
+              <div className="row">
+                {STAKE_TOKENS.map((t) => (
+                  <button
+                    key={t.symbol}
+                    onClick={() => setToken(t)}
+                    style={{ flex: 1, fontWeight: t.symbol === token.symbol ? 'bold' : 'normal' }}
+                    aria-pressed={t.symbol === token.symbol}
+                  >
+                    {t.symbol}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Stake — winner takes the pot</legend>
+              <div className="row">
+                {stakeTiersWei(token).map((s, i) => (
+                  <button
+                    key={s.toString()}
+                    onClick={() => setTier(i)}
+                    style={{ flex: 1, fontWeight: i === tier ? 'bold' : 'normal' }}
+                    aria-pressed={i === tier}
+                  >
+                    <span className="win">{formatUnits(s, token.decimals)}</span> {token.symbol}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <p className="fineprint">Winner takes the pot minus a 5% house fee. Ties refund both players. Your challenger stakes the same currency.</p>
+            {/* The stake and the run are two separate steps, and the run is easy to abandon
+                (close the tab, walk away) — which strands the stake in a funded duel no
+                opponent can accept. Say so before the money moves, not after. */}
+            <p className="fineprint">
+              ⚠️ Two steps: you stake now, then play one run to open the duel. Leave before
+              finishing that run and your stake stays locked until you reclaim it 24h later.
+            </p>
+            {/* Selecting a tier used to send the transaction, so a row of buttons that looked
+                exactly like the currency row above it — which only selects — spent real money
+                on first tap. Committing now needs this separate, explicitly worded action. */}
+            <button onClick={() => start(stakeTiersWei(token)[tier])} className="btn-block">
+              Create duel — stake {formatUnits(stakeTiersWei(token)[tier], token.decimals)} {token.symbol}
+            </button>
+          </div>
         </Window>
       )}
       {(phase === 'approving' || phase === 'depositing' || phase === 'binding') && (
@@ -164,7 +166,7 @@ function CreateDuel() {
         </Dialog95>
       )}
       {phase === 'playing' && duel && (
-        <Window title="NEWDUEL.EXE — your run. Make it count.">
+        <Window title="NEWDUEL.EXE — your run">
           <p className="fineprint">
             Your stake is in. <b>Finish this run to open the duel</b> for challengers — if you
             leave now it stays locked until you reclaim it.

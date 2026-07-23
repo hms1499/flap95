@@ -64,11 +64,13 @@ function WalletChip() {
           {address.slice(0, 4)}…{address.slice(-2)}
         </button>
         <Dialog95 title="Disconnect" open={confirmOpen} onClose={() => setConfirmOpen(false)}>
-          <p>⚠️ Disconnect wallet?</p>
-          <p className="mono">{address}</p>
-          <div className="row spread" style={{ marginTop: 10 }}>
-            <button onClick={() => { disconnect(); setConfirmOpen(false); }}>Disconnect</button>
-            <button onClick={() => setConfirmOpen(false)}>Cancel</button>
+          <div className="stack">
+            <p>⚠️ Disconnect wallet?</p>
+            <p className="mono">{address}</p>
+            <div className="row spread">
+              <button onClick={() => { disconnect(); setConfirmOpen(false); }}>Disconnect</button>
+              <button onClick={() => setConfirmOpen(false)}>Cancel</button>
+            </div>
           </div>
         </Dialog95>
       </>

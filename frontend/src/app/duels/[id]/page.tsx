@@ -263,11 +263,11 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
 
   return (
     <main className="desktop">
-      {phase === 'loading' && <Window title="DUEL.EXE"><p>Loading…</p></Window>}
+      {phase === 'loading' && <Window title={`DUEL_${id}.EXE`}><p>Loading…</p></Window>}
       {phase === 'preview' && detail && viewerRole(address, detail.creator, detail.acceptor) === 'creator' && (
-        <Window title={`DUEL_${detail.id}.EXE — yours`}>
+        <Window title={`DUEL_${detail.id}.EXE — your duel`}>
           <p>⏳ Your duel is open, waiting for a challenger.</p>
-          <p style={{ fontSize: 12 }}>Stake held: <b className="stake">{stakeStr} {symbol}</b>. Share this page&apos;s link and
+          <p className="fineprint">Stake held: <b className="stake">{stakeStr} {symbol}</b>. Share this page&apos;s link and
             whoever opens it can accept. You can&apos;t accept your own duel.</p>
           {left && (
             <p className="fineprint">
@@ -276,17 +276,17 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
                 : `Open for another ${left.label}. After that, come back here to reclaim your stake.`}
             </p>
           )}
-          <button onClick={() => router.push('/duels')} style={{ width: '100%' }}>Back to duels</button>
+          <button onClick={() => router.push('/duels')} className="btn-block">Back to duels</button>
         </Window>
       )}
       {phase === 'preview' && detail && viewerRole(address, detail.creator, detail.acceptor) !== 'creator' && (
         <Window title={`DUEL_${detail.id}.EXE`}>
           <p>⚔️ Stake: <b className="stake">{stakeStr} {symbol}</b> · vs <span className="mono">{displayName(names, detail.creator)}</span></p>
-          <p style={{ fontSize: 12 }}>Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>
+          <p className="fineprint">Same pipes, same physics. Beat their ghost, take the pot (minus 5% fee). Scores stay hidden until you finish — no sniping.</p>
           {left && <p className="fineprint">{left.expired ? 'This duel has expired.' : `Accept within ${left.label} — after that it expires and the stake goes back.`}</p>}
           {isConnected
-            ? <button onClick={accept} style={{ width: '100%' }}>Accept duel — stake {stakeStr} {symbol}</button>
-            : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
+            ? <button onClick={accept} className="btn-block">Accept duel — stake {stakeStr} {symbol}</button>
+            : <button onClick={() => connect({ connector: connectors[0] })} className="btn-block">Connect wallet</button>}
         </Window>
       )}
       {phase === 'settled' && detail && detail.winner !== null && (() => {
@@ -302,17 +302,19 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         );
         return (
           <Window title={`DUEL_${detail.id}.EXE — settled`}>
-            <DuelResult
-              {...oriented}
-              amount={oriented.won ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
-              symbol={symbol}
-              settleTx={detail.settleTx}
-            />
-            <div className="row spread" style={{ marginTop: 10 }}>
-              {!oriented.observer && !oriented.won && (
-                <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
-              )}
-              <button onClick={() => router.push('/duels')}>Back to duels</button>
+            <div className="stack">
+              <DuelResult
+                {...oriented}
+                amount={oriented.won ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
+                symbol={symbol}
+                settleTx={detail.settleTx}
+              />
+              <div className="row spread">
+                {!oriented.observer && !oriented.won && (
+                  <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
+                )}
+                <button onClick={() => router.push('/duels')}>Back to duels</button>
+              </div>
             </div>
           </Window>
         );
@@ -338,7 +340,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         if (resumeSeed === null) {
           return (
             <Window title={`DUEL_${detail.id}.EXE — unfinished`}>
-              <p style={{ fontSize: 12 }}>⚠️ You funded this duel but didn&apos;t finish your run, and
+              <p className="fineprint">⚠️ You funded this duel but didn&apos;t finish your run, and
                 the game can&apos;t be recovered on this device. Your {stakeStr} {symbol} stake can be
                 reclaimed 24 hours after creation — reopen this page then to refund it.</p>
               <button onClick={() => router.push('/duels')}>Back to duels</button>
@@ -354,9 +356,9 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         }
         return (
           <Window title={`DUEL_${detail.id}.EXE — finish your run`}>
-            <p style={{ fontSize: 12 }}>You funded this duel but never finished your run. Play it now
+            <p className="fineprint">You funded this duel but never finished your run. Play it now
               to open it for challengers.</p>
-            <button onClick={() => setResumeStarted(true)} style={{ width: '100%' }}>Finish your run</button>
+            <button onClick={() => setResumeStarted(true)} className="btn-block">Finish your run</button>
           </Window>
         );
       })()}
@@ -381,20 +383,22 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       )}
       {phase === 'result' && outcome && detail && (
         <Dialog95 title={iWon ? 'Victory' : tie ? 'Draw' : 'Defeat'} open>
-          <DuelResult
-            won={iWon}
-            tie={tie}
-            amount={iWon ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
-            symbol={symbol}
-            yourScore={outcome.acceptorScore}
-            theirScore={outcome.creatorScore}
-            settleTx={outcome.settleTx}
-          />
-          <div className="row spread" style={{ marginTop: 10 }}>
-            {!iWon && !tie && (
-              <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
-            )}
-            <button onClick={() => router.push('/duels')}>Close</button>
+          <div className="stack">
+            <DuelResult
+              won={iWon}
+              tie={tie}
+              amount={iWon ? (Number(stakeStr) * 1.9).toFixed(2) : stakeStr}
+              symbol={symbol}
+              yourScore={outcome.acceptorScore}
+              theirScore={outcome.creatorScore}
+              settleTx={outcome.settleTx}
+            />
+            <div className="row spread">
+              {!iWon && !tie && (
+                <button onClick={() => router.push(`/duels/new?challenge=${detail.creator}`)}>Rematch</button>
+              )}
+              <button onClick={() => router.push('/duels')}>Close</button>
+            </div>
           </div>
         </Dialog95>
       )}
@@ -404,7 +408,7 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
         return (
           <Window title={`DUEL_${detail.id}.EXE — in progress`}>
             <p>{playing ? '⏳ The challenger is playing their run.' : '⏳ The result is in — settling on-chain.'}</p>
-            <p style={{ fontSize: 12 }}>
+            <p className="fineprint">
               Both stakes (<span className="stake">{stakeStr} {symbol}</span> each) are held by the escrow until
               this finishes{yours ? '' : ' — you are not one of the two players'}.{' '}
               {playing
@@ -425,26 +429,26 @@ export default function DuelPage({ params }: { params: Promise<{ id: string }> }
       {phase === 'reclaim' && detail && reclaimKind === 'refundStale' && (
         <Window title={`DUEL_${detail.id}.EXE — stuck`}>
           <p>⚠️ This duel was accepted but never settled for over 24 hours.</p>
-          <p style={{ fontSize: 12 }}>
+          <p className="fineprint">
             Releasing it refunds <b>both players</b> their <span className="stake">{stakeStr} {symbol}</span> stake.
             Anyone can trigger this — the funds always go back to the two players, whoever pays the network fee.
           </p>
           {isConnected
-            ? <button onClick={reclaim} style={{ width: '100%' }}>Release both stakes</button>
-            : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
+            ? <button onClick={reclaim} className="btn-block">Release both stakes</button>
+            : <button onClick={() => connect({ connector: connectors[0] })} className="btn-block">Connect wallet</button>}
         </Window>
       )}
       {phase === 'reclaim' && detail && reclaimKind === 'cancelExpired' && (
         <Window title={`DUEL_${detail.id}.EXE — expired`}>
           <p>⚠️ Nobody accepted this duel within 24 hours, so it has expired.</p>
-          <p style={{ fontSize: 12 }}>
+          <p className="fineprint">
             Cancelling it returns the <span className="stake">{stakeStr} {symbol}</span> stake to the creator
             (<span className="mono">{displayName(names, detail.creator)}</span>). No opponent ever staked, so that is
             the only stake held. Anyone can trigger this — the refund goes to the creator either way.
           </p>
           {isConnected
-            ? <button onClick={reclaim} style={{ width: '100%' }}>Cancel duel &amp; refund creator</button>
-            : <button onClick={() => connect({ connector: connectors[0] })} style={{ width: '100%' }}>Connect wallet</button>}
+            ? <button onClick={reclaim} className="btn-block">Cancel duel &amp; refund creator</button>
+            : <button onClick={() => connect({ connector: connectors[0] })} className="btn-block">Connect wallet</button>}
         </Window>
       )}
       {phase === 'reclaiming' && (

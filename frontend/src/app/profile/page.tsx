@@ -1,8 +1,9 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAccount, useConnect, useWriteContract, usePublicClient } from 'wagmi';
 import Link from 'next/link';
 import { Window } from '@/components/Window';
+import { Loading, Empty, LoadFailed } from '@/components/SectionState';
 import { normalizeName } from '@/lib/profile';
 import { formatStake, NAME_REGISTRY_ADDRESS, nameRegistryAbi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
@@ -11,6 +12,7 @@ import { useNames, displayName } from '@/lib/useNames';
 import { viewerRole } from '@/lib/outcome';
 import { activeLabel } from '@/lib/profileDuels';
 import { useNow } from '@/lib/useNow';
+import { useJson } from '@/lib/useJson';
 import type { MeDuel } from '@/lib/meWire';
 
 export interface Me {
@@ -36,8 +38,9 @@ export default function ProfilePage() {
   const publicClient = usePublicClient();
   const now = useNow();
 
-  const [me, setMe] = useState<Me | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const { data: me, error: loadError, loading, reload } = useJson<Me>(
+    address ? `/api/me?address=${address}` : null,
+  );
   const [draftName, setDraftName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,39 +62,14 @@ export default function ProfilePage() {
   const wins = record.filter((d) => outcomeLabel(d, address) === 'Won').length;
   const losses = record.filter((d) => outcomeLabel(d, address) === 'Lost').length;
 
-  // `stale` lets the effect below disown a request whose wallet is no longer the
-  // connected one: switching wallets quickly could otherwise land A's duels and best
-  // score under B's address. Mirrors useNames and the duel page.
-  const load = useCallback(async (stale?: () => boolean) => {
-    if (!address) return;
-    setLoadError(false);
-    try {
-      const res = await fetch(`/api/me?address=${address}`);
-      if (!res.ok) throw new Error('bad status');
-      const data = await res.json();
-      if (stale?.()) return;
-      setMe(data);
-    } catch {
-      if (stale?.()) return;
-      setLoadError(true);
-    }
-  }, [address]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setMe(null);
-    void load(() => cancelled);
-    return () => { cancelled = true; };
-  }, [load]);
-
   useEffect(() => {
     if (!address) return;
     // Covers a setName transaction that landed while this page was not open.
     void fetch('/api/profile', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ address }),
-    }).then(() => load()).catch(() => {});
-  }, [address, load]);
+    }).then(() => reload()).catch(() => {});
+  }, [address, reload]);
 
   async function rename() {
     if (!address || !publicClient) return;
@@ -117,7 +95,7 @@ export default function ProfilePage() {
         return;
       }
       if (!res.ok) { setError('Saved on-chain, but the index did not update. Reload to retry.'); return; }
-      setMe((m) => (m ? { ...m, name: n.name } : m));
+      reload();
       setDraftName('');
       setSaved(true);
     } catch {
@@ -144,14 +122,11 @@ export default function ProfilePage() {
     <main className="desktop">
       <Window title="PROFILE.EXE">
         {loadError ? (
-          <>
-            <p>⚠️ Could not load your profile.</p>
-            <button onClick={() => void load()}>Try again</button>
-          </>
-        ) : me === null ? (
+          <LoadFailed onRetry={reload} />
+        ) : loading || !me ? (
           // Not the same as "no name / no duels": this page exists to tell people they have
           // money stuck in escrow, so it must never answer "nothing here" before it knows.
-          <p>Loading…</p>
+          <Loading />
         ) : (
           <>
             <p>
@@ -188,10 +163,10 @@ export default function ProfilePage() {
 
       {!loadError && (
         <Window title="UNFINISHED.LST">
-          {me === null ? (
-            <p className="fineprint">Loading…</p>
+          {loading || !me ? (
+            <Loading />
           ) : me.active.length === 0 ? (
-            <p className="fineprint">Nothing unfinished. <Link href="/duels/new">Start a duel</Link>.</p>
+            <Empty line="Nothing unfinished" action={{ href: '/duels/new', label: 'Start a duel' }} />
           ) : (
             <table className="ledger">
               <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
@@ -216,10 +191,10 @@ export default function ProfilePage() {
 
       {!loadError && (
         <Window title="HISTORY.LOG">
-          {me === null ? (
-            <p className="fineprint">Loading…</p>
+          {loading || !me ? (
+            <Loading />
           ) : me.history.length === 0 ? (
-            <p className="fineprint">No finished duels yet.</p>
+            <Empty line="No finished duels yet" />
           ) : (
             <>
               <p className="fineprint">Record: {wins}W – {losses}L</p>
