@@ -114,6 +114,13 @@ export default function PlayPage() {
           <button onClick={again}>Play again</button>
           <a className="button" href="/duels/new"><button>Duel for stablecoins</button></a>
         </div>
+        {/* The duel button sits under "You scored X", which reads as if this run
+            carries into the duel. It does not: a duel is a fresh run on its own
+            server-issued seed (both players run the same one), so the score is
+            earned there, not inherited from here. */}
+        <p className="fineprint">
+          A duel is a fresh run for real stakes — this practice score stays on the Hall of Fame.
+        </p>
       </Dialog95>
     </main>
   );
