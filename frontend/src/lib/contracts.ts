@@ -84,6 +84,15 @@ export function formatStake(stakeWei: string | null, token: string | null): stri
   return `${formatUnits(BigInt(stakeWei), t?.decimals ?? 18)} ${t?.symbol ?? 'USDm'}`;
 }
 
+export const NAME_REGISTRY_ADDRESS = process.env.NEXT_PUBLIC_NAME_REGISTRY as `0x${string}`;
+
+export const nameRegistryAbi = [
+  { type: 'function', name: 'setName', stateMutability: 'nonpayable',
+    inputs: [{ name: 'name', type: 'string' }], outputs: [] },
+  { type: 'function', name: 'nameOf', stateMutability: 'view',
+    inputs: [{ name: 'a', type: 'address' }], outputs: [{ type: 'string' }] },
+] as const;
+
 export const erc20Abi = [
   { type: 'function', name: 'approve', stateMutability: 'nonpayable',
     inputs: [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
