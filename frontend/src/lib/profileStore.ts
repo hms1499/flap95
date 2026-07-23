@@ -31,11 +31,19 @@ export async function upsertBest(address: string, score: number): Promise<void> 
       set score = greatest(practice_best.score, excluded.score), updated_at = now()`;
 }
 
-export async function topScores(): Promise<{ name: string; score: number }[]> {
-  const rows = await sql`select p.name, b.score
-    from practice_best b join profiles p on p.address = b.address
+/**
+ * The leaderboard. Left join because a score no longer requires a claimed name;
+ * callers render `name ?? aliasFor(address)`.
+ */
+export async function topScores(): Promise<{ address: string; name: string | null; score: number }[]> {
+  const rows = await sql`select b.address, p.name, b.score
+    from practice_best b left join profiles p on p.address = b.address
     order by b.score desc, b.updated_at asc limit 20`;
-  return rows.map((r) => ({ name: r.name as string, score: Number(r.score) }));
+  return rows.map((r) => ({
+    address: r.address as string,
+    name: (r.name as string | null) ?? null,
+    score: Number(r.score),
+  }));
 }
 
 export async function getBestScore(address: string): Promise<number | null> {

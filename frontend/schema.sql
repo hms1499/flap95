@@ -47,8 +47,11 @@ create table if not exists profiles (
 );
 create unique index if not exists profiles_name_lower_idx on profiles (lower(name));
 
+-- A score belongs to an address, not to a claimed name: a player who never sets
+-- a name still appears on the leaderboard, under their generated alias.
 create table if not exists practice_best (
-  address text primary key references profiles(address),
+  address text primary key,
   score integer not null,
   updated_at timestamptz not null default now()
 );
+alter table practice_best drop constraint if exists practice_best_address_fkey;
