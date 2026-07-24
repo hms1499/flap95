@@ -45,8 +45,3 @@ export async function topScores(): Promise<{ address: string; name: string | nul
     score: Number(r.score),
   }));
 }
-
-export async function getBestScore(address: string): Promise<number | null> {
-  const rows = await sql`select score from practice_best where address = ${address}`;
-  return rows.length ? Number(rows[0].score) : null;
-}

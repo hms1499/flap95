@@ -19,7 +19,6 @@ import type { MeDuel } from '@/lib/meWire';
 
 export interface Me {
   name: string | null;
-  bestScore: number | null;
   active: MeDuel[];
   history: MeDuel[];
 }
@@ -137,12 +136,7 @@ export default function ProfilePage() {
           <Loading />
         ) : (
           <>
-            <p>
-              👤 <b>{me.name ?? aliasFor(address ?? '')}</b>
-              {me.bestScore !== null && (
-                <> · best practice score <b>{me.bestScore}</b></>
-              )}
-            </p>
+            <p>👤 <b>{me.name ?? aliasFor(address ?? '')}</b></p>
             <p className="mono fineprint">{address}</p>
             <fieldset>
               <legend>{me.name ? 'Change your name' : 'Pick your name'}</legend>
