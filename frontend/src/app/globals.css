@@ -278,6 +278,13 @@ table.ledger th {
   font-size: 12px; text-transform: uppercase; letter-spacing: 1px;
 }
 table.ledger td:last-child { font-family: 'Cascadia Mono', Consolas, 'Courier New', monospace; }
+/* 98.css sets `table { white-space: nowrap }` for authenticity. In the ledger
+   that turned a duel's subtitle into one unbreakable line, so the first column's
+   minimum width was the length of that string and /profile scrolled sideways at
+   360px — MiniPay's minimum. Cells wrap; the stake column keeps nowrap so an
+   amount never splits across lines. */
+table.ledger td { white-space: normal; }
+table.ledger td.stake { white-space: nowrap; }
 
 /* ============================================================
    DUEL FLOW — transaction dialogs (installer-style) + result.
