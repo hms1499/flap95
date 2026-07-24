@@ -286,6 +286,16 @@ table.ledger td:last-child { font-family: 'Cascadia Mono', Consolas, 'Courier Ne
 table.ledger td { white-space: normal; }
 table.ledger td.stake { white-space: nowrap; }
 
+/* The row is the target. A duel used to be reachable only through a 56x15
+   button, which is under half the 44px minimum for touch. Stacking the title
+   and subtitle inside one link makes the whole cell tappable and frees the
+   column the button needed. */
+.rowlink {
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  min-height: 44px; color: inherit; text-decoration: none;
+}
+.rowlink:hover, .rowlink:focus-visible { text-decoration: underline; }
+
 /* ============================================================
    DUEL FLOW — transaction dialogs (installer-style) + result.
    Boldness is spent on the result screen; the tx dialogs stay

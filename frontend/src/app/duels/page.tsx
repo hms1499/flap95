@@ -26,12 +26,12 @@ export default function DuelsPage() {
       <Window title="C:\DUELS — open challenges">
         <div className="stack">
           <table className="ledger">
-            <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
+            <thead><tr><th>Duel</th><th>Stake</th></tr></thead>
             <tbody>
-              {loading && <Loading as="row" colSpan={3} />}
-              {error && <LoadFailed as="row" colSpan={3} onRetry={reload} />}
+              {loading && <Loading as="row" colSpan={2} />}
+              {error && <LoadFailed as="row" colSpan={2} onRetry={reload} />}
               {!loading && !error && duels.length === 0 && (
-                <Empty as="row" colSpan={3} line="No open duels" action={{ href: '/duels/new', label: 'Create one' }} />
+                <Empty as="row" colSpan={2} line="No open duels" action={{ href: '/duels/new', label: 'Create one' }} />
               )}
               {!loading && !error && duels.map((d) => {
                 // acceptDuel reverts with SelfAccept() for the creator, so a duel of your own
@@ -44,9 +44,13 @@ export default function DuelsPage() {
                 const who = mine ? 'yours' : `${displayName(names, d.creator)}${d.challengeTo ? ' · rematch' : ''}`;
                 return (
                   <tr key={d.id}>
-                    <td>⚔️ duel_{d.id}.exe<br /><small>{who}{left && ` · ${left.expired ? 'expired' : `${left.label} left`}`}</small></td>
+                    <td>
+                      <Link className="rowlink" href={`/duels/${d.id}`}>
+                        <span>⚔️ duel_{d.id}.exe</span>
+                        <small>{who}{left && ` · ${left.expired ? 'expired' : `${left.label} left`}`}</small>
+                      </Link>
+                    </td>
                     <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
-                    <td><Link href={`/duels/${d.id}`}><button>{mine ? 'View' : 'Open'}</button></Link></td>
                   </tr>
                 );
               })}

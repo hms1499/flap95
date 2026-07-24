@@ -177,18 +177,19 @@ export default function ProfilePage() {
             <Empty line="Nothing unfinished" action={{ href: '/duels/new', label: 'Start a duel' }} />
           ) : (
             <table className="ledger">
-              <thead><tr><th>Duel</th><th>Stake</th><th></th></tr></thead>
+              <thead><tr><th>Duel</th><th>Stake</th></tr></thead>
               <tbody>
                 {me.active.map((d) => (
                   <tr key={d.id}>
                     <td>
-                      ⚔️ duel_{d.id}.exe<br />
-                      <small className={d.status === 'funded' ? 'win' : undefined}>
-                        {activeLabel(d.status, Date.parse(d.createdAt), now)} · vs {opponentOf(d) ?? 'nobody yet'}
-                      </small>
+                      <Link className="rowlink" href={`/duels/${d.id}`}>
+                        <span>⚔️ duel_{d.id}.exe</span>
+                        <small className={d.status === 'funded' ? 'win' : undefined}>
+                          {activeLabel(d.status, Date.parse(d.createdAt), now)} · vs {opponentOf(d) ?? 'nobody yet'}
+                        </small>
+                      </Link>
                     </td>
                     <td className="stake">{formatStake(d.stakeWei, d.token)}</td>
-                    <td><Link href={`/duels/${d.id}`}><button>Open</button></Link></td>
                   </tr>
                 ))}
               </tbody>
