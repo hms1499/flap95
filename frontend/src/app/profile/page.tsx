@@ -4,7 +4,9 @@ import { useAccount, useConnect, useWriteContract, usePublicClient } from 'wagmi
 import Link from 'next/link';
 import { Window } from '@/components/Window';
 import { Loading, Empty, LoadFailed } from '@/components/SectionState';
+import { TxProgress } from '@/components/TxProgress';
 import { normalizeName } from '@/lib/profile';
+import { RENAME_STEPS, activeStep, isBusy, nextPhase, type RenamePhase } from '@/lib/renamePhase';
 import { formatStake, NAME_REGISTRY_ADDRESS, nameRegistryAbi } from '@/lib/contracts';
 import { feeCurrencyOverrides } from '@/lib/minipay';
 import { aliasFor } from '@/lib/alias';
@@ -42,9 +44,10 @@ export default function ProfilePage() {
     address ? `/api/me?address=${address}` : null,
   );
   const [draftName, setDraftName] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<RenamePhase>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const busy = isBusy(phase);
+  const step = activeStep(phase);
 
   const names = useNames([
     ...(me?.active ?? []).flatMap((d) => [d.creator, d.acceptor]),
@@ -76,15 +79,16 @@ export default function ProfilePage() {
     const n = normalizeName(draftName);
     if (!n.ok) { setError('Name: 1–16 letters, digits, space, _ . -'); return; }
     setError(null);
-    setSaved(false);
-    setBusy(true);
+    setPhase((p) => nextPhase(p, 'submit'));
     try {
       const hash = await writeContractAsync({
         address: NAME_REGISTRY_ADDRESS, abi: nameRegistryAbi,
         functionName: 'setName', args: [n.name],
         ...feeCurrencyOverrides(),
       });
+      setPhase((p) => nextPhase(p, 'signed'));
       await publicClient.waitForTransactionReceipt({ hash });
+      setPhase((p) => nextPhase(p, 'confirmed'));
       // The name is now on-chain; ask the server to read it back into the index.
       const res = await fetch('/api/profile', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -92,16 +96,20 @@ export default function ProfilePage() {
       });
       if (res.status === 409) {
         setError('That name was just taken — pick another and send again.');
+        setPhase((p) => nextPhase(p, 'fail'));
         return;
       }
-      if (!res.ok) { setError('Saved on-chain, but the index did not update. Reload to retry.'); return; }
+      if (!res.ok) {
+        setError('Saved on-chain, but the index did not update. Reload to retry.');
+        setPhase((p) => nextPhase(p, 'fail'));
+        return;
+      }
       reload();
       setDraftName('');
-      setSaved(true);
+      setPhase((p) => nextPhase(p, 'synced'));
     } catch {
       setError('The transaction was cancelled or did not go through.');
-    } finally {
-      setBusy(false);
+      setPhase((p) => nextPhase(p, 'fail'));
     }
   }
 
@@ -140,16 +148,22 @@ export default function ProfilePage() {
               <legend>{me.name ? 'Change your name' : 'Pick your name'}</legend>
               <div className="row">
                 <input
-                  placeholder="New name" value={draftName} maxLength={16}
+                  placeholder="New name" value={draftName} maxLength={16} disabled={busy}
                   // Clear both notices: "Saved." under a half-typed new name claims
-                  // something that has not happened yet.
-                  onChange={(e) => { setDraftName(e.target.value); setSaved(false); setError(null); }}
+                  // something that has not happened yet. Mid-flight the keystroke is
+                  // ignored instead — the transaction is already broadcast.
+                  onChange={(e) => {
+                    setDraftName(e.target.value);
+                    setPhase((p) => nextPhase(p, 'edit'));
+                    setError(null);
+                  }}
                 />
-                <button onClick={rename} disabled={busy || !draftName.trim()}>
-                  {busy ? 'Confirming…' : 'Save name'}
-                </button>
+                <button onClick={rename} disabled={busy || !draftName.trim()}>Save name</button>
               </div>
-              {saved && <p className="fineprint">Saved.</p>}
+              {step !== null && (
+                <TxProgress title="Saving your name" steps={RENAME_STEPS} active={step} />
+              )}
+              {phase === 'done' && <p className="fineprint win">✓ Saved.</p>}
               {error && <p className="fineprint">⚠️ {error}</p>}
               <p className="fineprint">
                 Your scores follow your wallet, so renaming keeps them. Setting a name is a
