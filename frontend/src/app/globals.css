@@ -384,3 +384,10 @@ table.ledger td.stake { white-space: nowrap; }
   .tx-step.is-active .tx-step__mark { animation: none; }
   .tx-bar span { animation: none; width: 100%; transform: none; }
 }
+
+/* iOS Safari zooms the viewport when a focused field is under 16px, which made
+   tapping the rename box jump the whole page. Scoped to coarse pointers so the
+   11px 98.css control keeps its proportions with a mouse. */
+@media (pointer: coarse) {
+  input, select, textarea { font-size: 16px; }
+}
