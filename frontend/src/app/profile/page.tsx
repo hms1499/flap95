@@ -207,35 +207,39 @@ export default function ProfilePage() {
         </Window>
       )}
 
-      {!loadError && me && (
+      {!loadError && (
         <Window title="RENAME.EXE">
-          <fieldset>
-            <legend>{me.name ? 'Change your name' : 'Pick your name'}</legend>
-            <div className="row">
-              <input
-                placeholder="New name" value={draftName} maxLength={16} disabled={busy}
-                // Clear both notices: "Saved." under a half-typed new name claims
-                // something that has not happened yet. Mid-flight the keystroke is
-                // ignored instead — the transaction is already broadcast.
-                onChange={(e) => {
-                  setDraftName(e.target.value);
-                  setPhase((p) => nextPhase(p, 'edit'));
-                  setError(null);
-                }}
-              />
-              <button onClick={rename} disabled={busy || !draftName.trim()}>Save name</button>
-            </div>
-            {step !== null && (
-              <TxProgress title="Saving your name" steps={RENAME_STEPS} active={step} />
-            )}
-            {phase === 'done' && <p className="fineprint win">✓ Saved.</p>}
-            {error && <p className="fineprint">⚠️ {error}</p>}
-            <p className="fineprint">
-              Your scores follow your wallet, so renaming keeps them. Setting a name is a
-              transaction — the network fee is paid in USDm. Your old name becomes free for
-              anyone else to take.
-            </p>
-          </fieldset>
+          {loading || !me ? (
+            <Loading />
+          ) : (
+            <fieldset>
+              <legend>{me.name ? 'Change your name' : 'Pick your name'}</legend>
+              <div className="row">
+                <input
+                  placeholder="New name" value={draftName} maxLength={16} disabled={busy}
+                  // Clear both notices: "Saved." under a half-typed new name claims
+                  // something that has not happened yet. Mid-flight the keystroke is
+                  // ignored instead — the transaction is already broadcast.
+                  onChange={(e) => {
+                    setDraftName(e.target.value);
+                    setPhase((p) => nextPhase(p, 'edit'));
+                    setError(null);
+                  }}
+                />
+                <button onClick={rename} disabled={busy || !draftName.trim()}>Save name</button>
+              </div>
+              {step !== null && (
+                <TxProgress title="Saving your name" steps={RENAME_STEPS} active={step} />
+              )}
+              {phase === 'done' && <p className="fineprint win">✓ Saved.</p>}
+              {error && <p className="fineprint">⚠️ {error}</p>}
+              <p className="fineprint">
+                Your scores follow your wallet, so renaming keeps them. Setting a name is a
+                transaction — the network fee is paid in USDm. Your old name becomes free for
+                anyone else to take.
+              </p>
+            </fieldset>
+          )}
         </Window>
       )}
     </main>
